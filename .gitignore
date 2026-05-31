@@ -1,0 +1,98 @@
+# ==========================================
+# MACHINE LEARNING / DATA SCIENCE SPECIFIC
+# ==========================================
+
+# Data storage (Never commit raw data)
+data/
+datasets/
+raw_data/
+processed_data/
+*.csv
+*.parquet
+*.jsonl
+*.tsv
+*.h5
+*.hdf5
+
+# Model weights, checkpoints, and artifacts
+models/
+checkpoints/
+weights/
+*.pkl
+*.pkl.z
+*.joblib
+*.pth
+*.pt
+*.onnx
+*.pb
+*.tflite
+*.ckpt
+
+# Experiment tracking & logs
+lightning_logs/
+wandb/
+.comet-ml/
+tensorboard/
+mlruns/
+*.log
+
+# ==========================================
+# PYTHON CORE & VIRTUAL ENVIRONMENTS
+# ==========================================
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+*.env
+*.usr
+
+# Package management build artifacts
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# ==========================================
+# JUPYTER NOTEBOOKS & IDEs
+# ==========================================
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
+*/.ipynb_checkpoints/*
+
+# IDE settings
+.vscode/
+.idea/
+.spyderproject
+.spyproject
+
+# ==========================================
+# OPERATING SYSTEM
+# ==========================================
+
+.DS_Store
+.DS_Store?
+Thm.db
+Desktop.ini
+

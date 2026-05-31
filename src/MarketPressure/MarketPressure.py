@@ -1,0 +1,221 @@
+import random
+import time
+from typing import final
+
+import pandas as pd
+import numpy as np
+import enum
+
+from sklearn.preprocessing import RobustScaler, StandardScaler
+from hmmlearn.hmm import GaussianHMM, GMMHMM
+
+
+# Short Term Defaults
+ALPHA: final = 4
+
+# Long Term Defaults
+GAMMA: final = 6
+DELTA: final = 2
+
+
+class ModelType(enum.Enum):
+    GaussianEmission  = 0
+    GaussianMixture   = 1
+
+
+class MarketPressureModel:
+
+    def __init__(self, model_type):
+        self.data = pd.DataFrame()
+        self.training_data = pd.DataFrame()
+        self.feature_vector = pd.DataFrame()
+
+        self.model  = None
+        self.scaler = None
+
+        self.model_type = model_type
+        if not isinstance(model_type, ModelType):
+            raise ValueError("Invalid model type. Must be one of: GaussianHMM, GaussianMixture")
+
+    def load_data(self, path):
+        if not path.endswith('.csv'):
+            raise Exception('Invalid file format. Must be .csv')
+
+        data = pd.read_csv(path)
+
+        # Uses Data as primary key/index
+        data["Date"] = pd.to_datetime(data["Date"])
+        data = data.sort_values(by=["Date"])
+        data = data.set_index("Date")
+
+        self.data = data
+
+    def set_training_period(self, period):
+        if period is None:
+            self.training_data = self.data.copy()
+        else:
+            # sets latest X-days from the last entry in dataset
+            self.training_data = self.data.iloc[-period:].copy()
+
+        if self.training_data.empty:
+            raise Exception("No training data found within that period. Please check that 0 <= period <= t_n")
+
+        return True
+
+    def _log_return_(self, data):
+        data["r"] = np.log(data["Close"] / data["Close"].shift(1))
+        return data
+
+    def _signed_vol_proxy_(self, data):
+        price_range = data["High"] - data["Low"]
+        imbalance = (2.0 * data["Close"] - data["High"] - data["Low"]) / price_range
+
+        # avoid (price_range <= 0.0) -> Divide by zero error
+        data["phi"] = np.where(
+            price_range > 0.0,
+            imbalance * np.log(data["Volume"]),
+            0.0,
+        )
+
+        if data["phi"].isna().any():
+            raise ValueError("phi has null values.")
+
+        return data
+
+    def calculate_features(self):
+        self._log_return_(self.training_data)
+        self._signed_vol_proxy_(self.training_data)
+
+        features = self.training_data[["r", "phi"]].dropna()
+        self.training_data = self.training_data.loc[features.index]
+
+        if self.model_type == ModelType.GaussianEmission:
+            self.scaler = RobustScaler()
+        if self.model_type == ModelType.GaussianMixture:
+            self.scaler = StandardScaler()
+        if self.scaler is None:
+            raise Exception('Invalid model type. Must be one of: GaussianHMM, GaussianMixture')
+
+        self.feature_vector = self.scaler.fit_transform(features.to_numpy())
+
+        if self.feature_vector.size == 0:
+            raise Exception("No features vector calculated.")
+
+        return True
+
+    def init_model(self):
+        if self.model_type is None:
+            raise Exception('Invalid model type. Must be one of: GaussianHMM, GaussianMixture')
+
+        if self.model_type == ModelType.GaussianEmission:
+            self.model = GaussianHMM(
+                n_components=ALPHA,
+                covariance_type="full",
+                n_iter=1000,
+                tol=1e-4,
+                random_state=42
+            )
+
+        if self.model_type == ModelType.GaussianMixture:
+            self.model = GMMHMM(
+                n_components=GAMMA,
+                n_mix=DELTA,
+                covariance_type="full",
+                n_iter=2000,
+                tol=1e-4,
+                random_state=42
+            )
+
+    def train_model(self):
+        if self.model is None:
+            raise RuntimeError("Model not initialized.")
+
+        self.model.fit(self.feature_vector)
+
+        if not self.model.monitor_.converged:
+            return False
+
+        return True
+
+    def predict_current_state(self):
+        if self.model is None:
+            raise RuntimeError("Model not initialized.")
+
+        states = self.model.predict(self.feature_vector)
+        return states[-1]
+
+    def predict_state_probabilities(self):
+        if self.model is None:
+            raise RuntimeError("Model not initialized.")
+
+        probs = self.model.predict_proba(self.feature_vector)
+        return probs[-1]
+
+    def get_state_summary(self):
+        if self.model is None:
+            raise RuntimeError("Model not initialized.")
+
+        states = self.model.predict(self.feature_vector)
+
+        data = self.training_data.copy()
+        data = data.iloc[1:].copy()  # align after shift effects
+        data["state"] = states
+
+        summary = data.groupby("state").agg({
+            "r": ["mean", "std", "count"],
+            "phi": ["mean", "std"]
+        })
+
+        return summary
+
+    def get_transition_matrix(self):
+        if self.model is None:
+            raise RuntimeError("Model not initialized.")
+
+        return self.model.transmat_
+
+    def get_current_regime_distribution(self):
+        probs = self.model.predict_proba(self.feature_vector)
+        return probs[-1]
+
+    def get_state_path(self):
+        if self.model is None:
+            raise RuntimeError("Model not initialized.")
+
+        return self.model.predict(self.feature_vector)
+
+    def get_regime_volatility(self):
+        if self.model is None:
+            raise RuntimeError("Model not initialized.")
+
+        states = self.model.predict(self.feature_vector)
+
+        df = self.training_data.iloc[1:].copy()
+        df["state"] = states
+
+        return df.groupby("state")["r"].std()
+
+if __name__ == '__main__':
+
+    ShortModel = MarketPressureModel(model_type=ModelType.GaussianEmission)
+    ShortModel.load_data("../../datasets/QQQ.csv")
+
+    ShortModel.set_training_period(252)
+    ShortModel.calculate_features()
+    ShortModel.init_model()
+
+    _ = ShortModel.train_model()
+    if _ is False:
+        raise Exception("Convergence failed")
+
+
+    LongModel = MarketPressureModel(model_type=ModelType.GaussianMixture)
+    LongModel.load_data("../../datasets/QQQ.csv")
+
+    LongModel.set_training_period(period=None)
+    LongModel.calculate_features()
+    LongModel.init_model()
+
+    _ = LongModel.train_model()
+    if _ is False:
+        raise Exception("Convergence failed")
