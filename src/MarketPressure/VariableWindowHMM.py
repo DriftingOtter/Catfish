@@ -5,10 +5,11 @@ from typing import final
 import pandas as pd
 import numpy as np
 import enum
+import matplotlib.pyplot as plt
+import VariableWindowHMMViz as vz
 
 from sklearn.preprocessing import RobustScaler, StandardScaler
 from hmmlearn.hmm import GaussianHMM, GMMHMM
-
 
 # Short Term Defaults
 ALPHA: final = 4
@@ -111,7 +112,7 @@ class MarketPressureModel:
             self.model = GaussianHMM(
                 n_components=ALPHA,
                 covariance_type="full",
-                n_iter=1000,
+                n_iter=5000,
                 tol=1e-4,
                 random_state=42
             )
@@ -158,7 +159,6 @@ class MarketPressureModel:
         states = self.model.predict(self.feature_vector)
 
         data = self.training_data.copy()
-        data = data.iloc[1:].copy()  # align after shift effects
         data["state"] = states
 
         summary = data.groupby("state").agg({
@@ -195,12 +195,67 @@ class MarketPressureModel:
 
         return df.groupby("state")["r"].std()
 
+    def _state_emission_means(self):
+        if self.model.model_type == ModelType.GaussianEmission:
+            return self.model.model.means_
+        weights = self.model.model.weights_
+        means = self.model.model.means_
+        return np.einsum('sm,smf->sf', weights, means)
+
+    def _state_emission_variances(self):
+        if self.model.model_type == ModelType.GaussianEmission:
+            return np.array([np.diag(self.model.model.covars_[s])
+                             for s in range(self.model.model.n_components)])
+
+        weights = self.model.model.weights_
+        means = self.model.model.means_
+        state_means = np.einsum('sm,smf->sf', weights, means)
+        n_states = self.model.model.n_components
+        variances = np.zeros_like(state_means)
+
+        for s in range(n_states):
+            for m in range(self.model.model.n_mix):
+                w = weights[s, m]
+                mu_m = means[s, m]
+                sig_m = np.diag(self.model.model.covars_[s, m])
+                variances[s] += w * (sig_m + (mu_m - state_means[s]) ** 2)
+
+        return variances
+
+    def _forward_project(self, n_ahead):
+        transmat = self.model.get_transition_matrix()
+        current_probs = self.model.get_current_regime_distribution()
+        state_means = self._state_emission_means(self.model)
+        state_vars = self._state_emission_variances(self.model)
+        n_states = self.model.model.n_components
+
+        state_probs = np.zeros((n_ahead, n_states))
+        probs = current_probs.copy()
+
+        for t in range(n_ahead):
+            probs = probs @ transmat
+            state_probs[t] = probs
+
+        # expected emission and total variance (law of total variance)
+        expected = state_probs @ state_means
+        variance = np.zeros_like(expected)
+
+        for s in range(n_states):
+            p_s = state_probs[:, s:s + 1]
+            variance += p_s * (state_vars[s] + (state_means[s] - expected) ** 2)
+
+        std_original = np.sqrt(variance) * self.model.scaler.scale_
+        expected_original = self.model.scaler.inverse_transform(expected)
+
+        return state_probs, expected_original, std_original
+
+
 if __name__ == '__main__':
 
     ShortModel = MarketPressureModel(model_type=ModelType.GaussianEmission)
     ShortModel.load_data("../../datasets/QQQ.csv")
 
-    ShortModel.set_training_period(252)
+    ShortModel.set_training_period(2*252)
     ShortModel.calculate_features()
     ShortModel.init_model()
 
@@ -208,14 +263,18 @@ if __name__ == '__main__':
     if _ is False:
         raise Exception("Convergence failed")
 
+    fig = vz.Plotter(ShortModel).plot_all()
+    plt.show()
 
-    LongModel = MarketPressureModel(model_type=ModelType.GaussianMixture)
-    LongModel.load_data("../../datasets/QQQ.csv")
 
-    LongModel.set_training_period(period=None)
-    LongModel.calculate_features()
-    LongModel.init_model()
 
-    _ = LongModel.train_model()
-    if _ is False:
-        raise Exception("Convergence failed")
+    #LongModel = MarketPressureModel(model_type=ModelType.GaussianMixture)
+    #LongModel.load_data("../../datasets/QQQ-2.csv")
+
+    #LongModel.set_training_period(period=None)
+    #LongModel.calculate_features()
+    #LongModel.init_model()
+
+    #_ = LongModel.train_model()
+    #if _ is False:
+    #    raise Exception("Convergence failed")

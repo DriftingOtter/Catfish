@@ -978,7 +978,7 @@ files = [
 ]
 
 [package.dependencies]
-numpy = {version = ">=2.3.3", markers = "python_version >= \"3.14\""}
+numpy = {version = ">=1.26.0", markers = "python_version < \"3.14\""}
 python-dateutil = ">=2.8.2"
 tzdata = {version = "*", markers = "sys_platform == \"win32\" or sys_platform == \"emscripten\""}
 
@@ -1616,5 +1616,5 @@ repair = ["scipy (>=1.6.3)"]
 
 [metadata]
 lock-version = "2.1"
-python-versions = ">=3.14"
-content-hash = "dcca553ee9a88ebad5a1481b11f9f09eddfdbf0cd7f0006ba2b8706c877c6327"
+python-versions = ">=3.11,<3.14"
+content-hash = "ec5ae8b3a16248672291a3c6983fdc31c7c775b1539a81c45de4e159387b41b3"

@@ -27,6 +27,7 @@ weights/
 *.pb
 *.tflite
 *.ckpt
+*.python-version
 
 # Experiment tracking & logs
 lightning_logs/
