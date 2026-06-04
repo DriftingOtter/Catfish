@@ -253,7 +253,7 @@ class MarketPressureModel:
 if __name__ == '__main__':
 
     ShortModel = MarketPressureModel(model_type=ModelType.GaussianEmission)
-    ShortModel.load_data("../../datasets/QQQ.csv")
+    ShortModel.load_data("../../datasets/QQQ-4.csv")
 
     ShortModel.set_training_period(2*252)
     ShortModel.calculate_features()
@@ -269,7 +269,7 @@ if __name__ == '__main__':
 
 
     #LongModel = MarketPressureModel(model_type=ModelType.GaussianMixture)
-    #LongModel.load_data("../../datasets/QQQ-2.csv")
+    #LongModel.load_data("../../datasets/QQQ.csv")
 
     #LongModel.set_training_period(period=None)
     #LongModel.calculate_features()

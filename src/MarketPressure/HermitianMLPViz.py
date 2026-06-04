@@ -12,6 +12,8 @@ class HermitianViz:
     def __init__(self, model):
         self.model = model
 
+    # ── Static helpers ────────────────────────────────────────────────────────
+
     @staticmethod
     def _format_date_axis(ax):
         ax.xaxis.set_major_formatter(mdates.DateFormatter('%b %Y'))
@@ -28,6 +30,8 @@ class HermitianViz:
         b    = row_y[last]
         h    = sum(row_h[row:last + 1]) + (rowspan - 1) * v_gap
         return fig.add_axes([col_x, b, col_w, h], projection=projection)
+
+    # ── Private computation helpers ───────────────────────────────────────────
 
     def _simulate_paths(self, n_ahead, n_paths=200, seed=0):
         rng    = np.random.default_rng(seed)
@@ -50,6 +54,8 @@ class HermitianViz:
 
         return paths[:, :, 0], paths[:, :, 1]
 
+    # ── Plot methods ──────────────────────────────────────────────────────────
+
     def plot_features(self, axes=None, n_ahead=20, n_paths=200):
         data  = self.model.data
         state = self.model.state_df.set_index('date')
@@ -69,8 +75,8 @@ class HermitianViz:
         last_r       = float(data['r'].iloc[-1])
         last_phi     = float(data['phi'].iloc[-1])
 
-        r_q05, r_q25, r_med, r_q75, r_q95   = np.percentile(r_paths,   [5,25,50,75,95], axis=0)
-        p_q05, p_q25, p_med, p_q75, p_q95   = np.percentile(phi_paths, [5,25,50,75,95], axis=0)
+        r_q05, r_q25, r_med, r_q75, r_q95 = np.percentile(r_paths,   [5, 25, 50, 75, 95], axis=0)
+        p_q05, p_q25, p_med, p_q75, p_q95 = np.percentile(phi_paths, [5, 25, 50, 75, 95], axis=0)
 
         r_q05 = np.concatenate([[last_r],   r_q05])
         r_q25 = np.concatenate([[last_r],   r_q25])
@@ -122,34 +128,44 @@ class HermitianViz:
             return fig
 
     def plot_phase_space(self, ax=None):
-        # aggregate Hermite state across all features — reduces 10 coordinates to one 2D position
-        state   = self.model.state_df
-        c2_cols = [c for c in state.columns if c.startswith('c2_')]
-        c3_cols = [c for c in state.columns if c.startswith('c3_')]
-        c2      = state[c2_cols].sum(axis=1).values
-        c3      = state[c3_cols].sum(axis=1).values
+        state    = self.model.state_df
+        c2_cols  = [c for c in state.columns if c.startswith('c2_')]
+        c3_cols  = [c for c in state.columns if c.startswith('c3_')]
+        cpm_cols = [c for c in state.columns if c.startswith('cpm_')]
 
-        r     = np.sqrt(c2 ** 2 + c3 ** 2)
-        theta = np.arctan2(c3, c2)
+        c2  = state[c2_cols].sum(axis=1).values
+        c3  = state[c3_cols].sum(axis=1).values
+        cpm = state[cpm_cols].sum(axis=1).values
+
+        r     = np.sqrt(c2 ** 2 + c3 ** 2 + cpm ** 2)
         n     = len(r)
-
-        # radius = percentile rank of distributional stress within full history
         r_pct = (np.argsort(np.argsort(r)) + 1).astype(float) / n
+
+        # spherical decomposition — inclination from cpm axis, azimuth in c2-c3 plane
+        theta = np.arccos(np.clip(cpm / (r + 1e-12), -1.0, 1.0))
+        phi   = np.arctan2(c3, c2)
+
+        xs = r_pct * np.sin(theta) * np.cos(phi)
+        ys = r_pct * np.sin(theta) * np.sin(phi)
+        zs = r_pct * np.cos(theta)
 
         standalone = ax is None
         if standalone:
-            fig, ax = plt.subplots(figsize=(6, 6), subplot_kw={'projection': 'polar'})
+            fig = plt.figure(figsize=(6, 6))
+            ax  = fig.add_subplot(111, projection='3d')
 
-        # last 30 periods before current, in red
-        ax.scatter(theta[:-1], r_pct[:-1], c=np.arange(n - 1), cmap="viridis", s=6, alpha=0.5)
-        ax.scatter(theta[-1],     r_pct[-1],     s=80, color=COLORS[0], zorder=5, label='current')
-        ax.set_rticks([0.25, 0.5, 0.75, 0.95])
-        ax.set_yticklabels(['25th', '50th', '75th', '95th'])
-        ax.set_title('Distributional Phase Space\n(radius = stress percentile)', pad=15)
-        ax.legend(markerscale=2, loc='upper right')
+        ax.scatter(xs[:-1], ys[:-1], zs[:-1],
+                   c=np.arange(n - 1), cmap='viridis', s=6, alpha=0.5)
+        ax.scatter(xs[-1], ys[-1], zs[-1],
+                   s=80, color=COLORS[0], zorder=5, label='current')
+
+        ax.set_xlabel('C\u2082')
+        ax.set_ylabel('C\u2083')
+        ax.set_zlabel('C\u00b1')
+        ax.set_title('Distributional Phase Space', pad=15)
+        ax.legend(markerscale=2)
 
         if standalone:
-            plt.tight_layout()
             return fig
 
     def plot_signal(self, ax=None):
@@ -210,7 +226,7 @@ class HermitianViz:
         ax_r   = self._make_ax(fig, LEFT,    LEFT_W,  row_y, row_h, 0, V_GAP)
         ax_phi = self._make_ax(fig, LEFT,    LEFT_W,  row_y, row_h, 1, V_GAP)
         ax_ps  = self._make_ax(fig, RIGHT_X, RIGHT_W, row_y, row_h, 0, V_GAP,
-                               rowspan=2, projection='polar')
+                               rowspan=2, projection='3d')
         ax_sig = self._make_ax(fig, LEFT,    FULL_W,  row_y, row_h, 2, V_GAP)
 
         ax_phi.sharex(ax_r)
