@@ -1,24 +1,21 @@
 import os
-from pathlib import Path
 from typing import final
 
 import matplotlib.pyplot as plt
 from transformers import pipeline
 
-MODEL_PATH: final = (
-    Path(__file__).resolve().parent.parent.parent / "ExternalModels" / "finbert"
-)
+from catfish.paths import PROJECT_ROOT
+
+MODEL_PATH: final = PROJECT_ROOT / "ExternalModels" / "finbert"
 MAX_LENGTH: final = 512
 
 
 class MarketSentimentModel:
     def __init__(self):
         if not MODEL_PATH.is_dir():
-            raise FileNotFoundError(
-                f"FinBERT model directory not found: {MODEL_PATH}"
-            )
+            raise Exception(f"FinBERT model directory not found: {MODEL_PATH}")
 
-        os.environ["HF_HUB_OFFLINE"]            = "1"
+        os.environ["HF_HUB_OFFLINE"]           = "1"
         os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
 
         model_dir  = str(MODEL_PATH)
@@ -42,7 +39,7 @@ class MarketSentimentModel:
             for state in scores
         ]
 
-    def _chunk_text(self, text: str) -> list[str]:
+    def _chunk_text(self, text):
         tokenizer = self.model.tokenizer
         chunk_size = MAX_LENGTH - 2  # room for [CLS] and [SEP]
 
@@ -73,7 +70,7 @@ class MarketSentimentModel:
                 return self.extract_sentiment(states_prob)
             return self.extract_sentiment(states_prob[0])
 
-        label_totals: dict[str, float] = {}
+        label_totals = {}
         for chunk_scores in states_prob:
             for state in chunk_scores:
                 label_totals[state["label"]] = (
@@ -112,7 +109,14 @@ class MarketSentimentModel:
 
 if __name__ == "__main__":
 
-    text: str = open("/Users/daksh/Documents/Catfish/src/MarketPressure/8k.txt").read()
+    sample_path = PROJECT_ROOT / "datasets" / "8k.txt"
+    if sample_path.is_file():
+        text = sample_path.read_text()
+    else:
+        text = (
+            "The company reported a substantial increase in quarterly revenue "
+            "and improved operating margins year over year."
+        )
     print(text)
 
     SentimentModel = MarketSentimentModel()

@@ -1,20 +1,15 @@
-import random
-import time
+import enum
 from typing import final
 
-import pandas as pd
-import numpy as np
-import enum
 import matplotlib.pyplot as plt
-import VariableWindowHMMViz as vz
-
-from sklearn.preprocessing import RobustScaler, StandardScaler
+import numpy as np
+import pandas as pd
 from hmmlearn.hmm import GaussianHMM, GMMHMM
+from sklearn.preprocessing import RobustScaler, StandardScaler
 
-# Short Term Defaults
+from catfish.MarketPressure.HMM import VariableWindowHMMViz as vz
+
 ALPHA: final = 4
-
-# Long Term Defaults
 GAMMA: final = 6
 DELTA: final = 2
 
@@ -27,8 +22,8 @@ class ModelType(enum.Enum):
 class MarketPressureModel:
 
     def __init__(self, model_type):
-        self.data = pd.DataFrame()
-        self.training_data = pd.DataFrame()
+        self.data           = pd.DataFrame()
+        self.training_data  = pd.DataFrame()
         self.feature_vector = pd.DataFrame()
 
         self.model  = None
@@ -44,7 +39,6 @@ class MarketPressureModel:
 
         data = pd.read_csv(path)
 
-        # Uses Data as primary key/index
         data["Date"] = pd.to_datetime(data["Date"])
         data = data.sort_values(by=["Date"])
         data = data.set_index("Date")
@@ -71,7 +65,7 @@ class MarketPressureModel:
         price_range = data["High"] - data["Low"]
         imbalance = (2.0 * data["Close"] - data["High"] - data["Low"]) / price_range
 
-        # avoid (price_range <= 0.0) -> Divide by zero error
+        # avoid (price_range <= 0.0) -> divide by zero error
         data["phi"] = np.where(
             price_range > 0.0,
             imbalance * np.log(data["Volume"]),
@@ -252,8 +246,10 @@ class MarketPressureModel:
 
 if __name__ == '__main__':
 
+    from catfish.paths import PROJECT_ROOT
+
     ShortModel = MarketPressureModel(model_type=ModelType.GaussianEmission)
-    ShortModel.load_data("../../datasets/QQQ-4.csv")
+    ShortModel.load_data(str(PROJECT_ROOT / "datasets" / "QQQ-4.csv"))
 
     ShortModel.set_training_period(2*252)
     ShortModel.calculate_features()
@@ -263,7 +259,8 @@ if __name__ == '__main__':
     if _ is False:
         raise Exception("Convergence failed")
 
-    fig = vz.Plotter(ShortModel).plot_all()
+    Viz = vz.Plotter(ShortModel)
+    fig = Viz.plot_all()
     plt.show()
 
 

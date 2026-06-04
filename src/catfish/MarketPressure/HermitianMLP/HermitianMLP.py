@@ -1,18 +1,16 @@
-import enum
+from typing import final
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from typing import final
 from sklearn.neural_network import MLPClassifier
-from sklearn.preprocessing import RobustScaler, StandardScaler
+from sklearn.preprocessing import StandardScaler
 
-import HermitianMLPViz as vz
+from catfish.MarketPressure.HermitianMLP import HermitianMLPViz as vz
 
 WINDOW:     final = 2 * 252
 MIN_WINDOW: final = 60
 TAU:        final = 0.52
-
 
 
 class HermitianMLPModel:
@@ -191,8 +189,10 @@ class HermitianMLPModel:
 
 if __name__ == '__main__':
 
+    from catfish.paths import PROJECT_ROOT
+
     Model = HermitianMLPModel()
-    Model.load_data('../../datasets/QQQ-4.csv')
+    Model.load_data(str(PROJECT_ROOT / "datasets" / "QQQ-4.csv"))
     Model.calculate_features()
     Model.init_model()
 
@@ -202,5 +202,6 @@ if __name__ == '__main__':
 
     Model.generate_signals()
 
-    vz.HermitianViz(Model).plot_all()
+    Viz = vz.HermitianViz(Model)
+    Viz.plot_all()
     plt.show()

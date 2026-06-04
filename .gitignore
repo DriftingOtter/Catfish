@@ -37,6 +37,7 @@ wandb/
 tensorboard/
 mlruns/
 *.log
+CODING_GUIDLINE_STYLE.md
 
 # ==========================================
 # PYTHON CORE & VIRTUAL ENVIRONMENTS

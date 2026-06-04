@@ -1,8 +1,9 @@
-import matplotlib.dates as mdates
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
 from typing import final
+
+import matplotlib.dates as mdates
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 from hmmlearn.hmm import GaussianHMM
 
 

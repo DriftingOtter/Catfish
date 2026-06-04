@@ -1,8 +1,9 @@
+from typing import final
+
 import matplotlib.dates as mdates
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-from typing import final
 
 COLORS: final = ['#2196F3', '#4CAF50', '#FF9800', '#E91E63', '#9C27B0', '#F44336']
 
@@ -11,8 +12,6 @@ class HermitianViz:
 
     def __init__(self, model):
         self.model = model
-
-    # ── Static helpers ────────────────────────────────────────────────────────
 
     @staticmethod
     def _format_date_axis(ax):
@@ -30,8 +29,6 @@ class HermitianViz:
         b    = row_y[last]
         h    = sum(row_h[row:last + 1]) + (rowspan - 1) * v_gap
         return fig.add_axes([col_x, b, col_w, h], projection=projection)
-
-    # ── Private computation helpers ───────────────────────────────────────────
 
     def _simulate_paths(self, n_ahead, n_paths=200, seed=0):
         rng    = np.random.default_rng(seed)
@@ -53,8 +50,6 @@ class HermitianViz:
         paths = rng.multivariate_normal(mu, cov, size=(n_paths, n_ahead))
 
         return paths[:, :, 0], paths[:, :, 1]
-
-    # ── Plot methods ──────────────────────────────────────────────────────────
 
     def plot_features(self, axes=None, n_ahead=20, n_paths=200):
         data  = self.model.data
