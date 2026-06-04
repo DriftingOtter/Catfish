@@ -249,9 +249,9 @@ if __name__ == '__main__':
     from catfish.paths import PROJECT_ROOT
 
     ShortModel = MarketPressureModel(model_type=ModelType.GaussianEmission)
-    ShortModel.load_data(str(PROJECT_ROOT / "datasets" / "QQQ-4.csv"))
+    ShortModel.load_data(str(PROJECT_ROOT / "datasets" / "QQQ" / "QQQ.csv"))
 
-    ShortModel.set_training_period(2*252)
+    ShortModel.set_training_period(period=252)
     ShortModel.calculate_features()
     ShortModel.init_model()
 

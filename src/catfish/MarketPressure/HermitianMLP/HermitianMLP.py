@@ -192,7 +192,7 @@ if __name__ == '__main__':
     from catfish.paths import PROJECT_ROOT
 
     Model = HermitianMLPModel()
-    Model.load_data(str(PROJECT_ROOT / "datasets" / "QQQ-4.csv"))
+    Model.load_data(str(PROJECT_ROOT / "datasets" / "QQQ" / "QQQ.csv"))
     Model.calculate_features()
     Model.init_model()
 

@@ -12,8 +12,8 @@ __all__ = [
 
 def __getattr__(name):
     if name == "BarCollector":
-        from catfish.DataRetrieval.Collector import BarCollector
-        return BarCollector
+        from catfish.DataRetrieval.CandleStickCollector import CandleStickCollector
+        return CandleStickCollector
     if name == "MarketPressureModel":
         from catfish.MarketPressure.HMM.VariableWindowHMM import MarketPressureModel
         return MarketPressureModel
