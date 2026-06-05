@@ -15,13 +15,13 @@ def __getattr__(name):
         from catfish.DataRetrieval.CandleStickCollector import CandleStickCollector
         return CandleStickCollector
     if name == "MarketPressureModel":
-        from catfish.MarketPressure.HMM.VariableWindowHMM import MarketPressureModel
+        from catfish.AlphaModels.HMM.VariableWindowHMM import MarketPressureModel
         return MarketPressureModel
     if name == "ModelType":
-        from catfish.MarketPressure.HMM.VariableWindowHMM import ModelType
+        from catfish.AlphaModels.HMM.VariableWindowHMM import ModelType
         return ModelType
     if name == "HermitianMLPModel":
-        from catfish.MarketPressure.HermitianMLP.HermitianMLP import HermitianMLPModel
+        from catfish.AlphaModels.HermitianMLP.HermitianMLP import HermitianMLPModel
         return HermitianMLPModel
     if name == "MarketSentimentModel":
         from catfish.MarketSentiment.MarketSentimentModel import MarketSentimentModel

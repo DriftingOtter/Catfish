@@ -9,10 +9,14 @@ import numpy as np
 import pandas as pd
 import yfinance as yf
 
+from catfish.paths import PROJECT_ROOT
+
 ET: final = ZoneInfo("America/New_York")
 FMT: final = "%Y-%m-%d %H:%M:%S"
+DATE_FMT: final = "%Y-%m-%d"
 PRICE_DP: final = 6
 COLUMNS: final = ["Datetime", "Open", "High", "Low", "Close", "Adj Close", "Volume"]
+DAILY_COLUMNS: final = ["Date", "Open", "High", "Low", "Close", "Adj Close", "Volume"]
 CORE: final = ["Open", "High", "Low", "Close", "Volume"]
 
 
@@ -32,11 +36,12 @@ class CandleStickCollector:
 
         today = datetime.now(tz=ET).strftime("%Y-%m-%d")
 
-        self.data = pd.DataFrame()
+        self.data            = pd.DataFrame()
+        self.historical_data = pd.DataFrame()
 
         self.symbol = symbol.upper().strip()
-        self.path   = Path(f"{region.name}-{today}.csv")
         self.region = region
+        self.live_path = Path(f"{region.name}-{today}.csv")
 
         self._bar      = None
         self._bar_ts   = None
@@ -68,9 +73,45 @@ class CandleStickCollector:
             return True
 
         self.data = new
-        CandleStickCollector._write(self.data, self.path)
+        CandleStickCollector._write(self.data, self.live_path)
 
-        print(f"[{self.symbol}]  {len(self.data)} bars → {self.path}")
+        print(f"[{self.symbol}]  {len(self.data)} bars → {self.live_path}")
+        return True
+
+    def fetch_historical(self, start=None, end=None, path=None):
+        if start is not None and end is not None:
+            start_ts = pd.Timestamp(start)
+            end_ts   = pd.Timestamp(end)
+            if start_ts > end_ts:
+                raise Exception(f"start ({start}) must not exceed end ({end}).")
+            range_label = (
+                f"{start_ts.strftime(DATE_FMT)} → {end_ts.strftime(DATE_FMT)}"
+            )
+        elif start is None and end is None:
+            start_ts    = None
+            end_ts      = None
+            range_label = "all available history"
+        else:
+            raise Exception("start and end must both be provided, or both omitted.")
+
+        if path is None:
+            path = PROJECT_ROOT / "datasets" / self.symbol / f"{self.symbol}.csv"
+        else:
+            path = Path(path)
+
+        print(f"[{self.symbol}]  Fetching daily  {range_label}")
+
+        new = self._fetch_daily(start_ts, end_ts)
+
+        if new.empty:
+            print(f"[{self.symbol}]  No daily bars returned.")
+            return True
+
+        self.historical_data = new
+        path.parent.mkdir(parents=True, exist_ok=True)
+        CandleStickCollector._write(self.historical_data, path)
+
+        print(f"[{self.symbol}]  {len(self.historical_data)} days → {path}")
         return True
 
     async def run_live(self):
@@ -98,6 +139,35 @@ class CandleStickCollector:
         data = self._filter_session(data)
 
         return data[COLUMNS].sort_values("Datetime").reset_index(drop=True)
+
+    def _fetch_daily(self, start, end):
+        ticker = yf.Ticker(self.symbol)
+
+        if start is None and end is None:
+            raw = ticker.history(
+                period="max",
+                interval="1d",
+                auto_adjust=True,
+                prepost=False,
+            )
+        else:
+            # yfinance end is exclusive — advance one day so end date is included
+            raw = ticker.history(
+                start=start,
+                end=end + pd.Timedelta(days=1),
+                interval="1d",
+                auto_adjust=True,
+                prepost=False,
+            )
+
+        if raw.empty:
+            return pd.DataFrame(columns=DAILY_COLUMNS)
+
+        data = self._shape_daily_(raw)
+        data = self._validate_(data)
+        data = self._round_(data)
+
+        return data[DAILY_COLUMNS].sort_values("Date").reset_index(drop=True)
 
     def _filter_session(self, data):
         if data.empty:
@@ -163,7 +233,7 @@ class CandleStickCollector:
 
             if not row.empty:
                 self.data = pd.concat([self.data, row], ignore_index=True)
-                CandleStickCollector._write(self.data, self.path)
+                CandleStickCollector._write(self.data, self.live_path)
                 b = self._bar
                 print(
                     f"  [{ts.strftime('%H:%M:%S')} ET]  "
@@ -193,6 +263,17 @@ class CandleStickCollector:
         if ts.dt.tz is None:
             ts = ts.dt.tz_localize(ET)
         data["Datetime"] = ts.dt.tz_convert(ET).dt.strftime(FMT)
+        return data
+
+    def _shape_daily_(self, data):
+        if isinstance(data.columns, pd.MultiIndex):
+            data.columns = data.columns.get_level_values(0)
+        data.index.name = "Date"
+        data = data.reset_index()
+        ts = pd.to_datetime(data["Date"])
+        if ts.dt.tz is not None:
+            ts = ts.dt.tz_convert(ET)
+        data["Date"] = ts.dt.strftime(DATE_FMT)
         return data
 
     def _validate_(self, data):
@@ -242,9 +323,15 @@ if __name__ == '__main__':
 
     QQQCollector = CandleStickCollector("QQQ", region=Region.NewYork)
 
+    _ = QQQCollector.fetch_historical()
+    if _ is False:
+        raise Exception("Historical fetch failed")
+
+    # _ = QQQCollector.fetch_historical("2020-01-01", "2025-12-31")
+
     _ = QQQCollector.run()
     if _ is False:
-        raise Exception("Fetch failed")
+        raise Exception("Session fetch failed")
 
     try:
         asyncio.run(QQQCollector.run_live())
