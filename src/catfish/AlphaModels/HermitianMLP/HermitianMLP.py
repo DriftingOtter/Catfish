@@ -6,7 +6,7 @@ import pandas as pd
 from sklearn.neural_network import MLPClassifier
 from sklearn.preprocessing import StandardScaler
 
-from catfish.MarketPressure.HermitianMLP import HermitianMLPViz as vz
+from catfish.AlphaModels.HermitianMLP import HermitianMLPViz as vz
 
 WINDOW:     final = 2 * 252
 MIN_WINDOW: final = 60

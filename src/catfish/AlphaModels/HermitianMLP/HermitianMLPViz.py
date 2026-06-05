@@ -1,34 +1,14 @@
-from typing import final
-
-import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-COLORS: final = ['#2196F3', '#4CAF50', '#FF9800', '#E91E63', '#9C27B0', '#F44336']
+from catfish.Viz import PlotTheme
 
 
 class HermitianViz:
 
     def __init__(self, model):
         self.model = model
-
-    @staticmethod
-    def _format_date_axis(ax):
-        ax.xaxis.set_major_formatter(mdates.DateFormatter('%b %Y'))
-        ax.xaxis.set_major_locator(mdates.AutoDateLocator())
-        plt.setp(ax.xaxis.get_majorticklabels(), rotation=30, ha='right')
-
-    @staticmethod
-    def _future_trading_dates(last_date, n_ahead):
-        return pd.bdate_range(start=last_date + pd.Timedelta(days=1), periods=n_ahead)
-
-    @staticmethod
-    def _make_ax(fig, col_x, col_w, row_y, row_h, row, v_gap, rowspan=1, projection=None):
-        last = row + rowspan - 1
-        b    = row_y[last]
-        h    = sum(row_h[row:last + 1]) + (rowspan - 1) * v_gap
-        return fig.add_axes([col_x, b, col_w, h], projection=projection)
 
     def _simulate_paths(self, n_ahead, n_paths=200, seed=0):
         rng    = np.random.default_rng(seed)
@@ -62,7 +42,7 @@ class HermitianViz:
         pos_phi  = state['c3_phi'].values > 0
 
         last_date    = data.index[-1]
-        future_dates = self._future_trading_dates(last_date, n_ahead)
+        future_dates = PlotTheme.future_trading_dates(last_date, n_ahead)
         r_paths, phi_paths = self._simulate_paths(n_ahead, n_paths)
 
         # anchor forecast to last historical point for visual continuity
@@ -89,34 +69,39 @@ class HermitianViz:
         if standalone:
             fig, axes = plt.subplots(2, 1, figsize=(14, 7), sharex=True)
 
-        axes[0].plot(data.index, data['r'],   color='gray', alpha=0.2, linewidth=0.6)
-        axes[0].scatter(dates[pos_r],  r_vals[pos_r],  color=COLORS[1], s=6, alpha=0.7, label='c\u2083 > 0')
-        axes[0].scatter(dates[~pos_r], r_vals[~pos_r], color=COLORS[5], s=6, alpha=0.7, label='c\u2083 \u2264 0')
-        axes[0].fill_between(anchor_dates, r_q05, r_q95, color='red', alpha=0.10)
-        axes[0].fill_between(anchor_dates, r_q25, r_q75, color='red', alpha=0.25)
-        axes[0].plot(anchor_dates, r_med, color='red', linewidth=1.5, linestyle='--', zorder=3)
-        axes[0].axvline(last_date, color='black', linewidth=1, linestyle=':', alpha=0.6)
-        axes[0].axhline(0, color='black', linewidth=0.6, linestyle='--')
+        for ax in axes:
+            PlotTheme.style_ax(ax)
+
+        axes[0].plot(data.index, data['r'], color=PlotTheme.TRACE, alpha=0.2, linewidth=0.6)
+        axes[0].scatter(dates[pos_r],  r_vals[pos_r],  color=PlotTheme.STATE[1], s=6, alpha=0.7,
+                        label='c\u2083 > 0')
+        axes[0].scatter(dates[~pos_r], r_vals[~pos_r], color=PlotTheme.STATE[5], s=6, alpha=0.7,
+                        label='c\u2083 \u2264 0')
+        axes[0].fill_between(anchor_dates, r_q05, r_q95, color=PlotTheme.BAND, alpha=0.10)
+        axes[0].fill_between(anchor_dates, r_q25, r_q75, color=PlotTheme.BAND, alpha=0.25)
+        axes[0].plot(anchor_dates, r_med, color=PlotTheme.BAND, linewidth=1.5, linestyle='--', zorder=3)
+        axes[0].axvline(last_date, color=PlotTheme.MARKER, linewidth=1, linestyle=':', alpha=0.6)
+        axes[0].axhline(0, color=PlotTheme.ZERO, linewidth=0.6, linestyle='--')
         axes[0].set_ylabel('r')
         axes[0].set_title(f'Log Return & \u03c6 — Past + {n_ahead}d Simulation ({n_paths} paths)')
-        axes[0].legend(markerscale=3, loc='upper left')
+        PlotTheme.legend(axes[0], markerscale=3, loc='upper left')
         r_finite  = data['r'].dropna().values
         q1r, q99r = np.percentile(r_finite, [1, 99])
         axes[0].set_ylim(q1r - (q99r - q1r) * 0.15, q99r + (q99r - q1r) * 0.15)
 
-        axes[1].plot(data.index, data['phi'], color='gray', alpha=0.2, linewidth=0.6)
-        axes[1].scatter(dates[pos_phi],  phi_vals[pos_phi],  color=COLORS[1], s=6, alpha=0.7)
-        axes[1].scatter(dates[~pos_phi], phi_vals[~pos_phi], color=COLORS[5], s=6, alpha=0.7)
-        axes[1].fill_between(anchor_dates, p_q05, p_q95, color='red', alpha=0.10)
-        axes[1].fill_between(anchor_dates, p_q25, p_q75, color='red', alpha=0.25)
-        axes[1].plot(anchor_dates, p_med, color='red', linewidth=1.5, linestyle='--', zorder=3)
-        axes[1].axvline(last_date, color='black', linewidth=1, linestyle=':', alpha=0.6)
-        axes[1].axhline(0, color='black', linewidth=0.6, linestyle='--')
+        axes[1].plot(data.index, data['phi'], color=PlotTheme.TRACE, alpha=0.2, linewidth=0.6)
+        axes[1].scatter(dates[pos_phi],  phi_vals[pos_phi],  color=PlotTheme.STATE[1], s=6, alpha=0.7)
+        axes[1].scatter(dates[~pos_phi], phi_vals[~pos_phi], color=PlotTheme.STATE[5], s=6, alpha=0.7)
+        axes[1].fill_between(anchor_dates, p_q05, p_q95, color=PlotTheme.BAND, alpha=0.10)
+        axes[1].fill_between(anchor_dates, p_q25, p_q75, color=PlotTheme.BAND, alpha=0.25)
+        axes[1].plot(anchor_dates, p_med, color=PlotTheme.BAND, linewidth=1.5, linestyle='--', zorder=3)
+        axes[1].axvline(last_date, color=PlotTheme.MARKER, linewidth=1, linestyle=':', alpha=0.6)
+        axes[1].axhline(0, color=PlotTheme.ZERO, linewidth=0.6, linestyle='--')
         axes[1].set_ylabel('\u03c6')
         phi_finite  = data['phi'].dropna().values
         q1p, q99p   = np.percentile(phi_finite, [1, 99])
         axes[1].set_ylim(q1p - (q99p - q1p) * 0.15, q99p + (q99p - q1p) * 0.15)
-        self._format_date_axis(axes[1])
+        PlotTheme.format_date_axis(axes[1])
 
         if standalone:
             plt.tight_layout()
@@ -147,18 +132,20 @@ class HermitianViz:
         standalone = ax is None
         if standalone:
             fig = plt.figure(figsize=(6, 6))
+            PlotTheme.style_figure(fig)
             ax  = fig.add_subplot(111, projection='3d')
 
+        PlotTheme.style_ax_3d(ax)
         ax.scatter(xs[:-1], ys[:-1], zs[:-1],
-                   c=np.arange(n - 1), cmap='viridis', s=6, alpha=0.5)
+                   c=np.arange(n - 1), cmap=PlotTheme.density_cmap(), s=6, alpha=0.5)
         ax.scatter(xs[-1], ys[-1], zs[-1],
-                   s=80, color=COLORS[0], zorder=5, label='current')
+                   s=80, color=PlotTheme.STATE[0], zorder=5, label='current')
 
         ax.set_xlabel('C\u2082')
         ax.set_ylabel('C\u2083')
         ax.set_zlabel('C\u00b1')
         ax.set_title('Distributional Phase Space', pad=15)
-        ax.legend(markerscale=2)
+        PlotTheme.legend(ax, markerscale=2)
 
         if standalone:
             return fig
@@ -171,17 +158,20 @@ class HermitianViz:
         if standalone:
             fig, ax = plt.subplots(figsize=(14, 4))
 
-        ax.fill_between(r['date'], tau, 1.0, alpha=0.08, color=COLORS[1])
-        ax.fill_between(r['date'], 0.5, tau, alpha=0.08, color=COLORS[2])
-        ax.fill_between(r['date'], 0.0, 0.5, alpha=0.08, color=COLORS[5])
+        PlotTheme.style_ax(ax)
 
-        ax.plot(r['date'], r['mlp_proba'], linewidth=0.9, alpha=0.9)
-        ax.axhline(tau, color='black', linewidth=0.8, linestyle='--', label=f'\u03c4 = {tau}')
-        ax.axhline(0.5, color='black', linewidth=0.4, linestyle=':')
+        ax.fill_between(r['date'], tau, 1.0, alpha=0.08, color=PlotTheme.STATE[1])
+        ax.fill_between(r['date'], 0.5, tau, alpha=0.08, color=PlotTheme.STATE[2])
+        ax.fill_between(r['date'], 0.0, 0.5, alpha=0.08, color=PlotTheme.STATE[5])
+
+        ax.plot(r['date'], r['mlp_proba'], color=PlotTheme.FORECAST, linewidth=0.9, alpha=0.9)
+        ax.axhline(tau, color=PlotTheme.MARKER, linewidth=0.8, linestyle='--',
+                   label=f'\u03c4 = {tau}')
+        ax.axhline(0.5, color=PlotTheme.ZERO, linewidth=0.4, linestyle=':')
         ax.set_ylabel('P(up)')
         ax.set_title('MLP Confidence')
-        ax.legend()
-        self._format_date_axis(ax)
+        PlotTheme.legend(ax)
+        PlotTheme.format_date_axis(ax)
 
         # set ylim after all draws so zones don't anchor the axis to [0, 1]
         p   = r['mlp_proba']
@@ -217,12 +207,13 @@ class HermitianViz:
             row_y[i] = row_y[i + 1] + row_h[i + 1] + V_GAP
 
         fig = plt.figure(figsize=(18, 12))
+        PlotTheme.style_figure(fig)
 
-        ax_r   = self._make_ax(fig, LEFT,    LEFT_W,  row_y, row_h, 0, V_GAP)
-        ax_phi = self._make_ax(fig, LEFT,    LEFT_W,  row_y, row_h, 1, V_GAP)
-        ax_ps  = self._make_ax(fig, RIGHT_X, RIGHT_W, row_y, row_h, 0, V_GAP,
-                               rowspan=2, projection='3d')
-        ax_sig = self._make_ax(fig, LEFT,    FULL_W,  row_y, row_h, 2, V_GAP)
+        ax_r   = PlotTheme.make_ax(fig, LEFT,    LEFT_W,  row_y, row_h, 0, V_GAP)
+        ax_phi = PlotTheme.make_ax(fig, LEFT,    LEFT_W,  row_y, row_h, 1, V_GAP)
+        ax_ps  = PlotTheme.make_ax(fig, RIGHT_X, RIGHT_W, row_y, row_h, 0, V_GAP,
+                                   rowspan=2, projection='3d')
+        ax_sig = PlotTheme.make_ax(fig, LEFT,    FULL_W,  row_y, row_h, 2, V_GAP)
 
         ax_phi.sharex(ax_r)
 
@@ -233,7 +224,7 @@ class HermitianViz:
         idx        = self.model.data.index
         last_date  = idx[-1]
         view_start = idx[max(0, len(idx) - view_steps)]
-        future_end = self._future_trading_dates(last_date, n_ahead)[-1]
+        future_end = PlotTheme.future_trading_dates(last_date, n_ahead)[-1]
 
         ax_r.set_xlim(view_start, future_end + pd.Timedelta(days=5))
         ax_sig.set_xlim(view_start, last_date + pd.Timedelta(days=5))

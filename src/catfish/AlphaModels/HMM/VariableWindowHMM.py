@@ -7,7 +7,7 @@ import pandas as pd
 from hmmlearn.hmm import GaussianHMM, GMMHMM
 from sklearn.preprocessing import RobustScaler, StandardScaler
 
-from catfish.MarketPressure.HMM import VariableWindowHMMViz as vz
+from catfish.AlphaModels.HMM import VariableWindowHMMViz as vz
 
 ALPHA: final = 4
 GAMMA: final = 6

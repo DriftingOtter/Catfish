@@ -1,36 +1,15 @@
-from typing import final
-
-import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from hmmlearn.hmm import GaussianHMM
 
-
-COLORS: final = ['#2196F3', '#4CAF50', '#FF9800', '#E91E63', '#9C27B0', '#F44336']
+from catfish.Viz import PlotTheme
 
 
 class Plotter:
 
     def __init__(self, model):
         self.model = model
-
-    @staticmethod
-    def _future_trading_dates(last_date, n_ahead):
-        return pd.bdate_range(start=last_date + pd.Timedelta(days=1), periods=n_ahead)
-
-    @staticmethod
-    def _format_date_axis(ax):
-        ax.xaxis.set_major_formatter(mdates.DateFormatter('%b %Y'))
-        ax.xaxis.set_major_locator(mdates.AutoDateLocator())
-        plt.setp(ax.xaxis.get_majorticklabels(), rotation=30, ha='right')
-
-    @staticmethod
-    def _make_ax(fig, col_x, col_w, row_y, row_h, row, v_gap, rowspan=1):
-        last = row + rowspan - 1
-        b    = row_y[last]
-        h    = sum(row_h[row:last + 1]) + (rowspan - 1) * v_gap
-        return fig.add_axes([col_x, b, col_w, h])
 
     def _state_emission_means(self):
         hmm = self.model.model
@@ -111,16 +90,18 @@ class Plotter:
         if standalone:
             fig, ax = plt.subplots(figsize=(14, 5))
 
-        ax.plot(data.index, data["Close"], color='gray', alpha=0.3, linewidth=0.8, zorder=1)
+        PlotTheme.style_ax(ax)
+
+        ax.plot(data.index, data["Close"], color=PlotTheme.TRACE, alpha=0.3, linewidth=0.8, zorder=1)
         for state in range(n_states):
             mask = data["state"] == state
             ax.scatter(data.index[mask], data["Close"][mask],
-                       s=8, color=COLORS[state], label=f"State {state}", zorder=2)
+                       s=8, color=PlotTheme.STATE[state], label=f"State {state}", zorder=2)
 
         ax.set_ylabel("Close Price")
         ax.set_title(title)
-        ax.legend(loc='upper left', markerscale=2)
-        self._format_date_axis(ax)
+        PlotTheme.legend(ax, loc='upper left', markerscale=2)
+        PlotTheme.format_date_axis(ax)
 
         if standalone:
             plt.tight_layout()
@@ -135,21 +116,25 @@ class Plotter:
         if standalone:
             fig, axes = plt.subplots(2, 1, figsize=(14, 7), sharex=True)
 
+        for ax in axes:
+            PlotTheme.style_ax(ax)
+
         for state in range(n_states):
             mask = data["state"] == state
-            axes[0].scatter(data.index[mask], data["r"][mask],   s=8, color=COLORS[state], label=f"State {state}")
-            axes[1].scatter(data.index[mask], data["phi"][mask], s=8, color=COLORS[state])
+            axes[0].scatter(data.index[mask], data["r"][mask],   s=8, color=PlotTheme.STATE[state],
+                            label=f"State {state}")
+            axes[1].scatter(data.index[mask], data["phi"][mask], s=8, color=PlotTheme.STATE[state])
 
-        axes[0].plot(data.index, data["r"],   color='gray', alpha=0.2, linewidth=0.6)
-        axes[1].plot(data.index, data["phi"], color='gray', alpha=0.2, linewidth=0.6)
+        axes[0].plot(data.index, data["r"],   color=PlotTheme.TRACE, alpha=0.2, linewidth=0.6)
+        axes[1].plot(data.index, data["phi"], color=PlotTheme.TRACE, alpha=0.2, linewidth=0.6)
 
         axes[0].set_ylabel("Log Return (r)")
-        axes[0].axhline(0, color='black', linewidth=0.6, linestyle='--')
-        axes[0].legend(loc='upper left', markerscale=2)
+        axes[0].axhline(0, color=PlotTheme.ZERO, linewidth=0.6, linestyle='--')
+        PlotTheme.legend(axes[0], loc='upper left', markerscale=2)
         axes[0].set_title(title)
         axes[1].set_ylabel("Signed Vol Proxy (φ)")
-        axes[1].axhline(0, color='black', linewidth=0.6, linestyle='--')
-        self._format_date_axis(axes[1])
+        axes[1].axhline(0, color=PlotTheme.ZERO, linewidth=0.6, linestyle='--')
+        PlotTheme.format_date_axis(axes[1])
         r_finite  = data["r"].dropna().values
         q1r, q99r = np.percentile(r_finite, [1, 99])
         axes[0].set_ylim(q1r - (q99r - q1r) * 0.15, q99r + (q99r - q1r) * 0.15)
@@ -170,16 +155,18 @@ class Plotter:
         if standalone:
             fig, ax = plt.subplots(figsize=(14, 5))
 
+        PlotTheme.style_ax(ax)
+
         ax.stackplot(dates,
                      [probs[:, i] for i in range(n_states)],
                      labels=[f"State {i}" for i in range(n_states)],
-                     colors=COLORS[:n_states],
+                     colors=PlotTheme.STATE[:n_states],
                      alpha=0.8)
         ax.set_ylabel("Probability")
         ax.set_ylim(0, 1)
         ax.set_title(title)
-        ax.legend(loc='upper left')
-        self._format_date_axis(ax)
+        PlotTheme.legend(ax, loc='upper left')
+        PlotTheme.format_date_axis(ax)
 
         if standalone:
             plt.tight_layout()
@@ -193,8 +180,11 @@ class Plotter:
         if standalone:
             fig, ax = plt.subplots(figsize=(7, 6))
 
-        im = ax.imshow(transmat, cmap='Blues', vmin=0, vmax=1)
-        plt.colorbar(im, ax=ax, label="Probability")
+        PlotTheme.style_ax(ax)
+
+        im = ax.imshow(transmat, cmap=PlotTheme.heatmap_cmap(), vmin=0, vmax=1)
+        cb = plt.colorbar(im, ax=ax, label="Probability")
+        PlotTheme.style_colorbar(cb, label="Probability")
         ax.set_xticks(range(n_states))
         ax.set_yticks(range(n_states))
         ax.set_xticklabels([f"State {i}" for i in range(n_states)])
@@ -207,7 +197,8 @@ class Plotter:
             for j in range(n_states):
                 ax.text(j, i, f"{transmat[i, j]:.2f}",
                         ha='center', va='center',
-                        color='white' if transmat[i, j] > 0.5 else 'black', fontsize=9)
+                        color=PlotTheme.LEGEND if transmat[i, j] > 0.5 else PlotTheme.TICK,
+                        fontsize=9)
 
         if standalone:
             plt.tight_layout()
@@ -228,28 +219,33 @@ class Plotter:
         if standalone:
             fig, axes = plt.subplots(1, 3, figsize=(16, 5))
 
-        axes[0].bar(states, r_mean, yerr=r_std, capsize=5, color=COLORS[:n_states], alpha=0.8)
-        axes[0].axhline(0, color='black', linewidth=0.8, linestyle='--')
+        for ax in axes:
+            PlotTheme.style_ax(ax)
+
+        axes[0].bar(states, r_mean, yerr=r_std, capsize=5,
+                    color=PlotTheme.STATE[:n_states], alpha=0.8)
+        axes[0].axhline(0, color=PlotTheme.ZERO, linewidth=0.8, linestyle='--')
         axes[0].set_xticks(states)
         axes[0].set_xticklabels([f"State {s}" for s in states])
         axes[0].set_title("Mean Log Return (r)")
         axes[0].set_ylabel("r")
 
-        axes[1].bar(states, phi_mean, yerr=phi_std, capsize=5, color=COLORS[:n_states], alpha=0.8)
-        axes[1].axhline(0, color='black', linewidth=0.8, linestyle='--')
+        axes[1].bar(states, phi_mean, yerr=phi_std, capsize=5,
+                    color=PlotTheme.STATE[:n_states], alpha=0.8)
+        axes[1].axhline(0, color=PlotTheme.ZERO, linewidth=0.8, linestyle='--')
         axes[1].set_xticks(states)
         axes[1].set_xticklabels([f"State {s}" for s in states])
         axes[1].set_title("Mean Signed Vol Proxy (φ)")
         axes[1].set_ylabel("φ")
 
-        axes[2].bar(states, counts, color=COLORS[:n_states], alpha=0.8)
+        axes[2].bar(states, counts, color=PlotTheme.STATE[:n_states], alpha=0.8)
         axes[2].set_xticks(states)
         axes[2].set_xticklabels([f"State {s}" for s in states])
         axes[2].set_title("Days in State")
         axes[2].set_ylabel("Count")
 
         if standalone:
-            plt.suptitle(title)
+            PlotTheme.suptitle(title)
             plt.tight_layout()
             return fig
 
@@ -259,7 +255,7 @@ class Plotter:
         data["state"] = self.model.get_state_path()
 
         last_date    = data.index[-1]
-        future_dates = self._future_trading_dates(last_date, n_ahead)
+        future_dates = PlotTheme.future_trading_dates(last_date, n_ahead)
 
         paths   = self._simulate_paths(n_ahead, n_paths=n_paths)
         r_paths = paths[:, :, 0]
@@ -269,13 +265,18 @@ class Plotter:
         if standalone:
             fig, axes = plt.subplots(2, 1, figsize=(16, 8), sharex=True)
 
+        for ax in axes:
+            PlotTheme.style_ax(ax)
+
         for state in range(n_states):
             mask = data["state"] == state
-            axes[0].scatter(data.index[mask], data["r"][mask],   s=8, color=COLORS[state], label=f"State {state}", zorder=2)
-            axes[1].scatter(data.index[mask], data["phi"][mask], s=8, color=COLORS[state], zorder=2)
+            axes[0].scatter(data.index[mask], data["r"][mask],   s=8, color=PlotTheme.STATE[state],
+                             label=f"State {state}", zorder=2)
+            axes[1].scatter(data.index[mask], data["phi"][mask], s=8, color=PlotTheme.STATE[state],
+                            zorder=2)
 
-        axes[0].plot(data.index, data["r"],   color='gray', alpha=0.2, linewidth=0.6)
-        axes[1].plot(data.index, data["phi"], color='gray', alpha=0.2, linewidth=0.6)
+        axes[0].plot(data.index, data["r"],   color=PlotTheme.TRACE, alpha=0.2, linewidth=0.6)
+        axes[1].plot(data.index, data["phi"], color=PlotTheme.TRACE, alpha=0.2, linewidth=0.6)
 
         # anchor forecast bands to last historical point for visual continuity
         anchor_dates = pd.DatetimeIndex([last_date]).append(future_dates)
@@ -292,17 +293,17 @@ class Plotter:
             med = np.concatenate([[last_val], med])
             q75 = np.concatenate([[last_val], q75])
             q95 = np.concatenate([[last_val], q95])
-            ax.fill_between(anchor_dates, q05, q95, color='red', alpha=0.10)
-            ax.fill_between(anchor_dates, q25, q75, color='red', alpha=0.25)
-            ax.plot(anchor_dates, med, color='red', linewidth=1.5, linestyle='--', zorder=3)
-            ax.axvline(last_date, color='black', linewidth=1, linestyle=':', alpha=0.6)
-            ax.axhline(0, color='black', linewidth=0.6, linestyle='--')
+            ax.fill_between(anchor_dates, q05, q95, color=PlotTheme.BAND, alpha=0.10)
+            ax.fill_between(anchor_dates, q25, q75, color=PlotTheme.BAND, alpha=0.25)
+            ax.plot(anchor_dates, med, color=PlotTheme.BAND, linewidth=1.5, linestyle='--', zorder=3)
+            ax.axvline(last_date, color=PlotTheme.MARKER, linewidth=1, linestyle=':', alpha=0.6)
+            ax.axhline(0, color=PlotTheme.ZERO, linewidth=0.6, linestyle='--')
 
         axes[0].set_ylabel("Log Return (r)")
         axes[0].set_title(title or f"r & φ — Past + {n_ahead}d Forecast ({n_paths} paths)")
-        axes[0].legend(loc='upper left', markerscale=2)
+        PlotTheme.legend(axes[0], loc='upper left', markerscale=2)
         axes[1].set_ylabel("Signed Vol Proxy (φ)")
-        self._format_date_axis(axes[1])
+        PlotTheme.format_date_axis(axes[1])
         r_finite  = data["r"].dropna().values
         q1r, q99r = np.percentile(r_finite, [1, 99])
         axes[0].set_ylim(q1r - (q99r - q1r) * 0.15, q99r + (q99r - q1r) * 0.15)
@@ -320,7 +321,7 @@ class Plotter:
         hist_dates = self.model.training_data.index
         last_date  = hist_dates[-1]
 
-        future_dates = self._future_trading_dates(last_date, n_ahead)
+        future_dates = PlotTheme.future_trading_dates(last_date, n_ahead)
         future_probs = self._forward_project(n_ahead)
 
         all_dates = list(hist_dates) + list(future_dates)
@@ -330,17 +331,19 @@ class Plotter:
         if standalone:
             fig, ax = plt.subplots(figsize=(16, 5))
 
+        PlotTheme.style_ax(ax)
+
         ax.stackplot(all_dates,
                      [all_probs[:, i] for i in range(n_states)],
                      labels=[f"State {i}" for i in range(n_states)],
-                     colors=COLORS[:n_states],
+                     colors=PlotTheme.STATE[:n_states],
                      alpha=0.8)
-        ax.axvline(last_date, color='black', linewidth=1.2, linestyle=':', alpha=0.8)
+        ax.axvline(last_date, color=PlotTheme.MARKER, linewidth=1.2, linestyle=':', alpha=0.8)
         ax.set_ylabel("Probability")
         ax.set_ylim(0, 1)
         ax.set_title(title or f"State Probabilities — Historical + {n_ahead}d Forecast")
-        ax.legend(loc='upper left')
-        self._format_date_axis(ax)
+        PlotTheme.legend(ax, loc='upper left')
+        PlotTheme.format_date_axis(ax)
 
         if standalone:
             plt.tight_layout()
@@ -373,14 +376,15 @@ class Plotter:
             row_y[i] = row_y[i + 1] + row_h[i + 1] + V_GAP
 
         fig = plt.figure(figsize=(18, 14))
+        PlotTheme.style_figure(fig)
 
-        ax_fr   = self._make_ax(fig, LEFT,                         LEFT_W,  row_y, row_h, 0, V_GAP)
-        ax_fphi = self._make_ax(fig, LEFT,                         LEFT_W,  row_y, row_h, 1, V_GAP)
-        ax_tm   = self._make_ax(fig, RIGHT_X,                      RIGHT_W, row_y, row_h, 0, V_GAP, rowspan=2)
-        ax_fsp  = self._make_ax(fig, LEFT,                         FULL_W,  row_y, row_h, 2, V_GAP)
-        ax_sr   = self._make_ax(fig, LEFT,                         STAT_W,  row_y, row_h, 3, V_GAP)
-        ax_sphi = self._make_ax(fig, LEFT + (STAT_W + S_GAP),      STAT_W,  row_y, row_h, 3, V_GAP)
-        ax_sc   = self._make_ax(fig, LEFT + 2 * (STAT_W + S_GAP), STAT_W,  row_y, row_h, 3, V_GAP)
+        ax_fr   = PlotTheme.make_ax(fig, LEFT,                         LEFT_W,  row_y, row_h, 0, V_GAP)
+        ax_fphi = PlotTheme.make_ax(fig, LEFT,                         LEFT_W,  row_y, row_h, 1, V_GAP)
+        ax_tm   = PlotTheme.make_ax(fig, RIGHT_X,                      RIGHT_W, row_y, row_h, 0, V_GAP, rowspan=2)
+        ax_fsp  = PlotTheme.make_ax(fig, LEFT,                         FULL_W,  row_y, row_h, 2, V_GAP)
+        ax_sr   = PlotTheme.make_ax(fig, LEFT,                         STAT_W,  row_y, row_h, 3, V_GAP)
+        ax_sphi = PlotTheme.make_ax(fig, LEFT + (STAT_W + S_GAP),      STAT_W,  row_y, row_h, 3, V_GAP)
+        ax_sc   = PlotTheme.make_ax(fig, LEFT + 2 * (STAT_W + S_GAP), STAT_W,  row_y, row_h, 3, V_GAP)
 
         ax_fphi.sharex(ax_fr)
 
@@ -392,7 +396,7 @@ class Plotter:
         idx        = self.model.training_data.index
         last_date  = idx[-1]
         view_start = idx[max(0, len(idx) - view_steps)]
-        future_end = self._future_trading_dates(last_date, n_ahead)[-1]
+        future_end = PlotTheme.future_trading_dates(last_date, n_ahead)[-1]
 
         ax_fr.set_xlim(view_start, future_end + pd.Timedelta(days=5))
         ax_fsp.set_xlim(view_start, future_end + pd.Timedelta(days=5))
