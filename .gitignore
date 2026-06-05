@@ -1,10 +1,13 @@
-# ==========================================
-# MACHINE LEARNING / DATA SCIENCE SPECIFIC
-# ==========================================
-
 # Data storage (Never commit raw data)
 data/
-datasets/
+
+# Keep datasets directory structure, ignore contents
+datasets/**
+!datasets/
+!datasets/**/
+!datasets/**/.gitkeep
+!datasets/**/README.md
+
 raw_data/
 processed_data/
 ExternalModels/
@@ -98,4 +101,3 @@ MANIFEST
 .DS_Store?
 Thm.db
 Desktop.ini
-
