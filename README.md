@@ -6,7 +6,7 @@
 
 ## Trading Strategy
 
-Catfish is designed to be modular with a hierarchical workflow of models that operate in unison, each carrying respective weightage on the features it predicts.
+Catfish is a distributed, horizontally scalable trading system with strategy-partitioned agents, self-regulating execution logic, and local/global performance caching for validated order execution across multiple trading horizons.
 
 ```mermaid
 flowchart TD
