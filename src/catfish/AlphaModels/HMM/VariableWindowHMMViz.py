@@ -1,8 +1,10 @@
+import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from hmmlearn.hmm import GaussianHMM
 
+from catfish.AlphaModels.TimeIndex import TimeIndex
 from catfish.Viz import PlotTheme
 
 
@@ -10,6 +12,53 @@ class Plotter:
 
     def __init__(self, model):
         self.model = model
+
+    @staticmethod
+    def _index_step(index):
+        delta = pd.Series(index).diff().dropna()
+        if delta.empty:
+            return pd.Timedelta(days=1)
+        return delta.median()
+
+    def _format_time_axis(self, ax):
+        if self.model.time_index == TimeIndex.Date:
+            PlotTheme.format_date_axis(ax)
+            return
+
+        idx  = self.model.training_data.index
+        span = idx[-1] - idx[0]
+        if span <= pd.Timedelta(days=1):
+            fmt     = '%H:%M'
+            locator = mdates.HourLocator(interval=1)
+        else:
+            fmt     = '%m-%d %H:%M'
+            locator = mdates.AutoDateLocator(minticks=4, maxticks=12)
+
+        ax.xaxis.set_major_formatter(mdates.DateFormatter(fmt))
+        ax.xaxis.set_major_locator(locator)
+        plt.setp(ax.xaxis.get_majorticklabels(), rotation=30, ha='right')
+
+    def _future_times(self, last_ts, n_ahead):
+        if self.model.time_index == TimeIndex.Date:
+            return PlotTheme.future_trading_dates(last_ts, n_ahead)
+        step = self._index_step(self.model.training_data.index)
+        return pd.date_range(start=last_ts + step, periods=n_ahead, freq=step)
+
+    def _xlim_end(self, future_end):
+        if self.model.time_index == TimeIndex.Date:
+            return future_end + pd.Timedelta(days=5)
+        step = self._index_step(self.model.training_data.index)
+        return future_end + step * 5
+
+    def _forecast_horizon_label(self, n_ahead):
+        if self.model.time_index == TimeIndex.Date:
+            return f"{n_ahead}d"
+        return f"{n_ahead}-bar"
+
+    def _state_count_label(self):
+        if self.model.time_index == TimeIndex.Date:
+            return "Days in State"
+        return "Bars in State"
 
     def _state_emission_means(self):
         hmm = self.model.model
@@ -101,7 +150,7 @@ class Plotter:
         ax.set_ylabel("Close Price")
         ax.set_title(title)
         PlotTheme.legend(ax, loc='upper left', markerscale=2)
-        PlotTheme.format_date_axis(ax)
+        self._format_time_axis(ax)
 
         if standalone:
             plt.tight_layout()
@@ -134,7 +183,7 @@ class Plotter:
         axes[0].set_title(title)
         axes[1].set_ylabel("Signed Vol Proxy (φ)")
         axes[1].axhline(0, color=PlotTheme.ZERO, linewidth=0.6, linestyle='--')
-        PlotTheme.format_date_axis(axes[1])
+        self._format_time_axis(axes[1])
         r_finite  = data["r"].dropna().values
         q1r, q99r = np.percentile(r_finite, [1, 99])
         axes[0].set_ylim(q1r - (q99r - q1r) * 0.15, q99r + (q99r - q1r) * 0.15)
@@ -166,7 +215,7 @@ class Plotter:
         ax.set_ylim(0, 1)
         ax.set_title(title)
         PlotTheme.legend(ax, loc='upper left')
-        PlotTheme.format_date_axis(ax)
+        self._format_time_axis(ax)
 
         if standalone:
             plt.tight_layout()
@@ -241,7 +290,7 @@ class Plotter:
         axes[2].bar(states, counts, color=PlotTheme.STATE[:n_states], alpha=0.8)
         axes[2].set_xticks(states)
         axes[2].set_xticklabels([f"State {s}" for s in states])
-        axes[2].set_title("Days in State")
+        axes[2].set_title(self._state_count_label())
         axes[2].set_ylabel("Count")
 
         if standalone:
@@ -255,7 +304,7 @@ class Plotter:
         data["state"] = self.model.get_state_path()
 
         last_date    = data.index[-1]
-        future_dates = PlotTheme.future_trading_dates(last_date, n_ahead)
+        future_dates = self._future_times(last_date, n_ahead)
 
         paths   = self._simulate_paths(n_ahead, n_paths=n_paths)
         r_paths = paths[:, :, 0]
@@ -300,10 +349,11 @@ class Plotter:
             ax.axhline(0, color=PlotTheme.ZERO, linewidth=0.6, linestyle='--')
 
         axes[0].set_ylabel("Log Return (r)")
-        axes[0].set_title(title or f"r & φ — Past + {n_ahead}d Forecast ({n_paths} paths)")
+        horizon = self._forecast_horizon_label(n_ahead)
+        axes[0].set_title(title or f"r & φ — Past + {horizon} Forecast ({n_paths} paths)")
         PlotTheme.legend(axes[0], loc='upper left', markerscale=2)
         axes[1].set_ylabel("Signed Vol Proxy (φ)")
-        PlotTheme.format_date_axis(axes[1])
+        self._format_time_axis(axes[1])
         r_finite  = data["r"].dropna().values
         q1r, q99r = np.percentile(r_finite, [1, 99])
         axes[0].set_ylim(q1r - (q99r - q1r) * 0.15, q99r + (q99r - q1r) * 0.15)
@@ -321,7 +371,7 @@ class Plotter:
         hist_dates = self.model.training_data.index
         last_date  = hist_dates[-1]
 
-        future_dates = PlotTheme.future_trading_dates(last_date, n_ahead)
+        future_dates = self._future_times(last_date, n_ahead)
         future_probs = self._forward_project(n_ahead)
 
         all_dates = list(hist_dates) + list(future_dates)
@@ -341,9 +391,9 @@ class Plotter:
         ax.axvline(last_date, color=PlotTheme.MARKER, linewidth=1.2, linestyle=':', alpha=0.8)
         ax.set_ylabel("Probability")
         ax.set_ylim(0, 1)
-        ax.set_title(title or f"State Probabilities — Historical + {n_ahead}d Forecast")
+        ax.set_title(title or f"State Probabilities — Historical + {self._forecast_horizon_label(n_ahead)} Forecast")
         PlotTheme.legend(ax, loc='upper left')
-        PlotTheme.format_date_axis(ax)
+        self._format_time_axis(ax)
 
         if standalone:
             plt.tight_layout()
@@ -396,9 +446,10 @@ class Plotter:
         idx        = self.model.training_data.index
         last_date  = idx[-1]
         view_start = idx[max(0, len(idx) - view_steps)]
-        future_end = PlotTheme.future_trading_dates(last_date, n_ahead)[-1]
+        future_end = self._future_times(last_date, n_ahead)[-1]
+        x_end      = self._xlim_end(future_end)
 
-        ax_fr.set_xlim(view_start, future_end + pd.Timedelta(days=5))
-        ax_fsp.set_xlim(view_start, future_end + pd.Timedelta(days=5))
+        ax_fr.set_xlim(view_start, x_end)
+        ax_fsp.set_xlim(view_start, x_end)
 
         return fig

@@ -1,12 +1,11 @@
 from typing import final
 
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from sklearn.neural_network import MLPClassifier
 from sklearn.preprocessing import StandardScaler
 
-from catfish.AlphaModels.HermitianMLP import HermitianMLPViz as vz
+from catfish.AlphaModels.TimeIndex import TimeIndex
 
 WINDOW:     final = 2 * 252
 MIN_WINDOW: final = 60
@@ -15,7 +14,7 @@ TAU:        final = 0.52
 
 class HermitianMLPModel:
 
-    def __init__(self):
+    def __init__(self, time_index):
         self.data     = pd.DataFrame()
         self.state_df = pd.DataFrame()
         self.results  = pd.DataFrame()
@@ -23,14 +22,18 @@ class HermitianMLPModel:
         self.model  = None
         self.scaler = None
 
+        self.time_index  = time_index
         self.feat_cols   = None
         self.tau         = TAU
         self.window      = WINDOW
         self.scaler_type = StandardScaler()
 
+        if not isinstance(time_index, TimeIndex):
+            raise ValueError("Invalid time index. Must be one of: Date, Datetime")
 
     def _log_return_(self, data):
-        data['r'] = np.log(data['Close'] / data['Close'].shift(1))
+        ratio = data['Close'] / data['Close'].shift(1)
+        data['r'] = np.where(ratio > 0.0, np.log(ratio), np.nan)
         return data
 
     def _volatility_(self, data):
@@ -39,10 +42,18 @@ class HermitianMLPModel:
 
     def _signed_vol_(self, data):
         price_range = data['High'] - data['Low']
-        data['phi'] = np.where(
+        imbalance   = np.where(
             price_range > 0.0,
-            ((2 * data['Open'] - data['High'] - data['Low']) / price_range)
-            * np.log1p(data['Volume']),
+            (2 * data['Open'] - data['High'] - data['Low']) / price_range,
+            0.0,
+        )
+        vol = np.log1p(np.where(data['Volume'] > 0.0, data['Volume'], 0.0))
+
+        # avoid (price_range <= 0.0) -> divide by zero error
+        # avoid (Volume <= 0.0) -> zero-volume bars
+        data['phi'] = np.where(
+            (price_range > 0.0) & (data['Volume'] > 0.0),
+            imbalance * vol,
             0.0,
         )
         return data
@@ -98,10 +109,22 @@ class HermitianMLPModel:
         if not path.endswith('.csv'):
             raise Exception('Invalid file format. Must be .csv')
 
-        raw      = pd.read_csv(path)
-        date_col = next(c for c in raw.columns if 'date' in c.lower())
-        raw[date_col] = pd.to_datetime(raw[date_col])
-        self.data = raw.sort_values(date_col).set_index(date_col)
+        data = pd.read_csv(path)
+
+        if self.time_index == TimeIndex.Date:
+            col = "Date"
+        else:
+            col = "Datetime"
+
+        if col not in data.columns:
+            raise Exception(f'Expected column "{col}" for {self.time_index.name} data.')
+
+        data[col] = pd.to_datetime(data[col])
+        data = data.sort_values(by=[col])
+        data = data.set_index(col)
+        data = data[~data.index.duplicated(keep="last")]
+
+        self.data = data
 
         return True
 
@@ -115,7 +138,7 @@ class HermitianMLPModel:
         data = self._signed_vol_(data)
         data = self._displacement_(data)
         data = self._rsi_(data)
-        self.data     = data.dropna()
+        self.data = data.replace([np.inf, -np.inf], np.nan).dropna()
         n             = len(self.data)
         self.window   = min(WINDOW, n // 2)
         if self.window < MIN_WINDOW:
@@ -189,10 +212,16 @@ class HermitianMLPModel:
 
 if __name__ == '__main__':
 
+    import matplotlib.pyplot as plt
+
+    from catfish.AlphaModels.HermitianMLP import HermitianMLPViz as vz
     from catfish.paths import PROJECT_ROOT
 
-    Model = HermitianMLPModel()
-    Model.load_data(str(PROJECT_ROOT / "datasets" / "QQQ" / "QQQ.csv"))
+    Model = HermitianMLPModel(time_index=TimeIndex.Datetime)
+    Model.load_data(str(PROJECT_ROOT / "datasets" / "QQQ" / "QQQ-2026-06-11.csv"))
+
+    #Model = HermitianMLPModel(time_index=TimeIndex.Date)
+    #Model.load_data(str(PROJECT_ROOT / "datasets" / "QQQ" / "QQQ.csv"))
     Model.calculate_features()
     Model.init_model()
 

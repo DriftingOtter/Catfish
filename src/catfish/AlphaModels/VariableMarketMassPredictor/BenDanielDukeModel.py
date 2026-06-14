@@ -8,17 +8,21 @@ from scipy.sparse import diags, eye as sp_eye
 from scipy.sparse.linalg import spsolve
 from scipy.stats import linregress
 
+from catfish.AlphaModels.TimeIndex import TimeIndex
+
 N:         final = 400
 X_SPAN:    final = 3.5
 
 
 class BenDanielDukeModel:
 
-    def __init__(self, N=N, x_span=X_SPAN):
+    def __init__(self, time_index, N=N, x_span=X_SPAN):
         if N < 3:
             raise ValueError("Grid must have at least 3 points.")
         if x_span <= 0.0:
             raise ValueError("x_span must be positive.")
+        if not isinstance(time_index, TimeIndex):
+            raise ValueError("Invalid time index. Must be one of: Date, Datetime")
 
         self.data          = pd.DataFrame()
         self.training_data = pd.DataFrame()
@@ -39,8 +43,9 @@ class BenDanielDukeModel:
         self.forecast_result = None
         self.ticker          = None
 
-        self.N       = N
-        self.x_span  = x_span
+        self.time_index = time_index
+        self.N          = N
+        self.x_span     = x_span
 
     def load_data(self, path):
         if not path.endswith('.csv'):
@@ -48,9 +53,18 @@ class BenDanielDukeModel:
 
         data = pd.read_csv(path)
 
-        data["Date"] = pd.to_datetime(data["Date"])
-        data = data.sort_values(by=["Date"])
-        data = data.set_index("Date")
+        if self.time_index == TimeIndex.Date:
+            col = "Date"
+        else:
+            col = "Datetime"
+
+        if col not in data.columns:
+            raise Exception(f'Expected column "{col}" for {self.time_index.name} data.')
+
+        data[col] = pd.to_datetime(data[col])
+        data = data.sort_values(by=[col])
+        data = data.set_index(col)
+        data = data[~data.index.duplicated(keep="last")]
 
         if data.empty:
             raise ValueError("No rows loaded from file.")
@@ -79,8 +93,13 @@ class BenDanielDukeModel:
         if self.training_data.empty:
             raise RuntimeError("Training period not set.")
 
-        close  = self.training_data["Close"].dropna().values.astype(float)
-        volume = self.training_data["Volume"].fillna(0).values.astype(float)
+        frame  = self.training_data.replace([np.inf, -np.inf], np.nan)
+        valid  = frame[["Close", "Volume"]].notna().all(axis=1)
+        frame  = frame.loc[valid]
+        close  = frame["Close"].values.astype(float)
+        volume = frame["Volume"].fillna(0).values.astype(float)
+
+        self.training_data = frame
 
         k = min(len(close), len(volume))
         close, volume = close[:k], volume[:k]
@@ -236,9 +255,9 @@ if __name__ == '__main__':
     from catfish.AlphaModels.VariableMarketMassPredictor import BenDanielDukeModelViz as vz
     from catfish.paths import PROJECT_ROOT
 
-    TICKER = "MNQ"
-    NVDAModel = BenDanielDukeModel()
-    NVDAModel.load_data(str(PROJECT_ROOT / "datasets" / f"{TICKER}" / f"{TICKER}.csv"))
+    TICKER = "QQQ"
+    NVDAModel = BenDanielDukeModel(time_index=TimeIndex.Datetime)
+    NVDAModel.load_data(str(PROJECT_ROOT / "datasets" / f"{TICKER}" / f"{TICKER}-2026-06-11.csv"))
     NVDAModel.set_training_period(2*252)
     NVDAModel.calculate_features()
 

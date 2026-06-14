@@ -193,8 +193,8 @@ class MarketSentimentModel:
 
 if __name__ == '__main__':
 
-    SentimentModel = MarketSentimentModel("NVDA")
-    SentimentModel.load_filings(years=3)
+    SentimentModel = MarketSentimentModel("SPCX")
+    SentimentModel.load_filings(years=1)
 
     sentiment = SentimentModel.analyse_filing(SentimentModel.filings[0])
 

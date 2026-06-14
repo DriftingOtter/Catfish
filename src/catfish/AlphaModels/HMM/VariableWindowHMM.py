@@ -7,7 +7,7 @@ import pandas as pd
 from hmmlearn.hmm import GaussianHMM, GMMHMM
 from sklearn.preprocessing import RobustScaler, StandardScaler
 
-from catfish.AlphaModels.HMM import VariableWindowHMMViz as vz
+from catfish.AlphaModels.TimeIndex import TimeIndex
 
 ALPHA: final = 4
 GAMMA: final = 6
@@ -21,7 +21,7 @@ class ModelType(enum.Enum):
 
 class MarketPressureModel:
 
-    def __init__(self, model_type):
+    def __init__(self, model_type, time_index):
         self.data           = pd.DataFrame()
         self.training_data  = pd.DataFrame()
         self.feature_vector = pd.DataFrame()
@@ -29,9 +29,12 @@ class MarketPressureModel:
         self.model  = None
         self.scaler = None
 
-        self.model_type = model_type
+        self.model_type  = model_type
+        self.time_index  = time_index
         if not isinstance(model_type, ModelType):
             raise ValueError("Invalid model type. Must be one of: GaussianHMM, GaussianMixture")
+        if not isinstance(time_index, TimeIndex):
+            raise ValueError("Invalid time index. Must be one of: Date, Datetime")
 
     def load_data(self, path):
         if not path.endswith('.csv'):
@@ -39,9 +42,18 @@ class MarketPressureModel:
 
         data = pd.read_csv(path)
 
-        data["Date"] = pd.to_datetime(data["Date"])
-        data = data.sort_values(by=["Date"])
-        data = data.set_index("Date")
+        if self.time_index == TimeIndex.Date:
+            col = "Date"
+        else:
+            col = "Datetime"
+
+        if col not in data.columns:
+            raise Exception(f'Expected column "{col}" for {self.time_index.name} data.')
+
+        data[col] = pd.to_datetime(data[col])
+        data = data.sort_values(by=[col])
+        data = data.set_index(col)
+        data = data[~data.index.duplicated(keep="last")]
 
         self.data = data
 
@@ -58,17 +70,24 @@ class MarketPressureModel:
         return True
 
     def _log_return_(self, data):
-        data["r"] = np.log(data["Close"] / data["Close"].shift(1))
+        ratio = data["Close"] / data["Close"].shift(1)
+        data["r"] = np.where(ratio > 0.0, np.log(ratio), np.nan)
         return data
 
     def _signed_vol_proxy_(self, data):
         price_range = data["High"] - data["Low"]
-        imbalance = (2.0 * data["Close"] - data["High"] - data["Low"]) / price_range
+        imbalance = np.where(
+            price_range > 0.0,
+            (2.0 * data["Close"] - data["High"] - data["Low"]) / price_range,
+            0.0,
+        )
+        vol = np.log(np.where(data["Volume"] > 0.0, data["Volume"], 1.0))
 
         # avoid (price_range <= 0.0) -> divide by zero error
+        # avoid (Volume <= 0.0) -> log(0) on zero-volume bars
         data["phi"] = np.where(
-            price_range > 0.0,
-            imbalance * np.log(data["Volume"]),
+            (price_range > 0.0) & (data["Volume"] > 0.0),
+            imbalance * vol,
             0.0,
         )
 
@@ -81,8 +100,10 @@ class MarketPressureModel:
         self._log_return_(self.training_data)
         self._signed_vol_proxy_(self.training_data)
 
-        features = self.training_data[["r", "phi"]].dropna()
-        self.training_data = self.training_data.loc[features.index]
+        features = self.training_data[["r", "phi"]].replace([np.inf, -np.inf], np.nan)
+        valid    = features.notna().all(axis=1)
+        features = features.loc[valid]
+        self.training_data = self.training_data.loc[valid]
 
         if self.model_type == ModelType.GaussianEmission:
             self.scaler = RobustScaler()
@@ -246,12 +267,13 @@ class MarketPressureModel:
 
 if __name__ == '__main__':
 
+    from catfish.AlphaModels.HMM import VariableWindowHMMViz as vz
     from catfish.paths import PROJECT_ROOT
 
-    ShortModel = MarketPressureModel(model_type=ModelType.GaussianEmission)
-    ShortModel.load_data(str(PROJECT_ROOT / "datasets" / "QQQ" / "QQQ.csv"))
+    ShortModel = MarketPressureModel(model_type=ModelType.GaussianEmission, time_index=TimeIndex.Datetime)
+    ShortModel.load_data(str(PROJECT_ROOT / "datasets" / "QQQ" / "QQQ-2026-06-11.csv"))
 
-    ShortModel.set_training_period(period=252)
+    ShortModel.set_training_period(period=None)
     ShortModel.calculate_features()
     ShortModel.init_model()
 
@@ -265,8 +287,8 @@ if __name__ == '__main__':
 
 
 
-    #LongModel = MarketPressureModel(model_type=ModelType.GaussianMixture)
-    #LongModel.load_data("../../datasets/QQQ.csv")
+    #LongModel = MarketPressureModel(model_type=ModelType.GaussianMixture, time_index=TimeIndex.Date)
+    #LongModel.load_data(str(PROJECT_ROOT / "datasets" / "QQQ" / "QQQ.csv"))
 
     #LongModel.set_training_period(period=None)
     #LongModel.calculate_features()

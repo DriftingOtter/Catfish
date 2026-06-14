@@ -5,6 +5,7 @@ __all__ = [
     "BarCollector",
     "MarketPressureModel",
     "ModelType",
+    "TimeIndex",
     "HermitianMLPModel",
     "MarketSentimentModel",
 ]
@@ -20,6 +21,9 @@ def __getattr__(name):
     if name == "ModelType":
         from catfish.AlphaModels.HMM.VariableWindowHMM import ModelType
         return ModelType
+    if name == "TimeIndex":
+        from catfish.AlphaModels.TimeIndex import TimeIndex
+        return TimeIndex
     if name == "HermitianMLPModel":
         from catfish.AlphaModels.HermitianMLP.HermitianMLP import HermitianMLPModel
         return HermitianMLPModel

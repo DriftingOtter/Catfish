@@ -1,7 +1,10 @@
+import matplotlib.dates as mdates
 import matplotlib.gridspec as gridspec
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 
+from catfish.AlphaModels.TimeIndex import TimeIndex
 from catfish.Viz import PlotTheme
 
 
@@ -9,6 +12,43 @@ class Plotter:
 
     def __init__(self, model):
         self.model = model
+
+    @staticmethod
+    def _index_step(index):
+        delta = pd.Series(index).diff().dropna()
+        if delta.empty:
+            return pd.Timedelta(days=1)
+        return delta.median()
+
+    def _format_time_axis(self, ax):
+        if self.model.time_index == TimeIndex.Date:
+            PlotTheme.format_date_axis(ax)
+            return
+
+        idx  = self.model.training_data.index
+        span = idx[-1] - idx[0]
+        if span <= pd.Timedelta(days=1):
+            fmt     = '%H:%M'
+            locator = mdates.HourLocator(interval=1)
+        else:
+            fmt     = '%m-%d %H:%M'
+            locator = mdates.AutoDateLocator(minticks=4, maxticks=12)
+
+        ax.xaxis.set_major_formatter(mdates.DateFormatter(fmt))
+        ax.xaxis.set_major_locator(locator)
+        plt.setp(ax.xaxis.get_majorticklabels(), rotation=30, ha='right')
+
+    def _future_times(self, last_ts, n_ahead):
+        if self.model.time_index == TimeIndex.Date:
+            return PlotTheme.future_trading_dates(last_ts, n_ahead)
+        step = self._index_step(self.model.training_data.index)
+        return pd.date_range(start=last_ts + step, periods=n_ahead, freq=step)
+
+    def _xlim_end(self, future_end):
+        if self.model.time_index == TimeIndex.Date:
+            return future_end + pd.Timedelta(days=5)
+        step = self._index_step(self.model.training_data.index)
+        return future_end + step * 5
 
     def plot_displacement(self, ax=None):
         if self.model.x_hist is None:
@@ -27,8 +67,8 @@ class Plotter:
 
         PlotTheme.style_ax(ax)
 
-        t_h = np.arange(len(x_hist))
-        t_f = np.arange(len(x_hist), len(x_hist) + len(xE))
+        t_h = self.model.training_data.index
+        t_f = self._future_times(t_h[-1], len(xE))
 
         ax.plot(t_h, x_hist, color=PlotTheme.HIST, lw=0.8, alpha=0.75,
                 label='x = P − VWAP  (historical)')
@@ -38,11 +78,11 @@ class Plotter:
         ax.fill_between(t_f, xE - 2 * sig, xE + 2 * sig,
                         color=PlotTheme.UNCERTAIN, alpha=0.10, label='±2σ')
         ax.axhline(0, color=PlotTheme.ZERO, lw=0.9, ls='--', alpha=0.5, label='VWAP')
-        ax.axvline(len(x_hist), color=PlotTheme.MARKER, lw=1.3, ls=':', alpha=0.9,
+        ax.axvline(t_h[-1], color=PlotTheme.MARKER, lw=1.3, ls=':', alpha=0.9,
                    label='Forecast origin')
 
         if self.model.gex_eff < 0:
-            ax.axvspan(len(x_hist), len(x_hist) + len(xE),
+            ax.axvspan(t_h[-1], t_f[-1],
                        color=PlotTheme.WARNING, alpha=0.15)
 
         regime = 'mean-reverting  ∪' if self.model.gex_eff >= 0 else 'trending  ∩'
@@ -52,7 +92,7 @@ class Plotter:
             f'α = {self.model.alpha:.2f}   ħ_eff = {self.model.h_eff:.3f}',
             fontsize=10.0, pad=8)
         ax.set_ylabel('Price displacement  x  ($)')
-        ax.set_xlabel('Time step')
+        self._format_time_axis(ax)
         PlotTheme.legend(ax, loc='upper left', ncol=6)
 
         if standalone:

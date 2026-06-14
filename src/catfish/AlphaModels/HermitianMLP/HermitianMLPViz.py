@@ -1,7 +1,9 @@
+import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+from catfish.AlphaModels.TimeIndex import TimeIndex
 from catfish.Viz import PlotTheme
 
 
@@ -9,6 +11,48 @@ class HermitianViz:
 
     def __init__(self, model):
         self.model = model
+
+    @staticmethod
+    def _index_step(index):
+        delta = pd.Series(index).diff().dropna()
+        if delta.empty:
+            return pd.Timedelta(days=1)
+        return delta.median()
+
+    def _format_time_axis(self, ax):
+        if self.model.time_index == TimeIndex.Date:
+            PlotTheme.format_date_axis(ax)
+            return
+
+        idx  = self.model.data.index
+        span = idx[-1] - idx[0]
+        if span <= pd.Timedelta(days=1):
+            fmt     = '%H:%M'
+            locator = mdates.HourLocator(interval=1)
+        else:
+            fmt     = '%m-%d %H:%M'
+            locator = mdates.AutoDateLocator(minticks=4, maxticks=12)
+
+        ax.xaxis.set_major_formatter(mdates.DateFormatter(fmt))
+        ax.xaxis.set_major_locator(locator)
+        plt.setp(ax.xaxis.get_majorticklabels(), rotation=30, ha='right')
+
+    def _future_times(self, last_ts, n_ahead):
+        if self.model.time_index == TimeIndex.Date:
+            return PlotTheme.future_trading_dates(last_ts, n_ahead)
+        step = self._index_step(self.model.data.index)
+        return pd.date_range(start=last_ts + step, periods=n_ahead, freq=step)
+
+    def _xlim_end(self, future_end):
+        if self.model.time_index == TimeIndex.Date:
+            return future_end + pd.Timedelta(days=5)
+        step = self._index_step(self.model.data.index)
+        return future_end + step * 5
+
+    def _forecast_horizon_label(self, n_ahead):
+        if self.model.time_index == TimeIndex.Date:
+            return f'{n_ahead}d'
+        return f'{n_ahead}-bar'
 
     def _simulate_paths(self, n_ahead, n_paths=200, seed=0):
         rng    = np.random.default_rng(seed)
@@ -42,7 +86,7 @@ class HermitianViz:
         pos_phi  = state['c3_phi'].values > 0
 
         last_date    = data.index[-1]
-        future_dates = PlotTheme.future_trading_dates(last_date, n_ahead)
+        future_dates = self._future_times(last_date, n_ahead)
         r_paths, phi_paths = self._simulate_paths(n_ahead, n_paths)
 
         # anchor forecast to last historical point for visual continuity
@@ -83,7 +127,8 @@ class HermitianViz:
         axes[0].axvline(last_date, color=PlotTheme.MARKER, linewidth=1, linestyle=':', alpha=0.6)
         axes[0].axhline(0, color=PlotTheme.ZERO, linewidth=0.6, linestyle='--')
         axes[0].set_ylabel('r')
-        axes[0].set_title(f'Log Return & \u03c6 — Past + {n_ahead}d Simulation ({n_paths} paths)')
+        axes[0].set_title(
+            f'Log Return & \u03c6 — Past + {self._forecast_horizon_label(n_ahead)} Simulation ({n_paths} paths)')
         PlotTheme.legend(axes[0], markerscale=3, loc='upper left')
         r_finite  = data['r'].dropna().values
         q1r, q99r = np.percentile(r_finite, [1, 99])
@@ -101,7 +146,7 @@ class HermitianViz:
         phi_finite  = data['phi'].dropna().values
         q1p, q99p   = np.percentile(phi_finite, [1, 99])
         axes[1].set_ylim(q1p - (q99p - q1p) * 0.15, q99p + (q99p - q1p) * 0.15)
-        PlotTheme.format_date_axis(axes[1])
+        self._format_time_axis(axes[1])
 
         if standalone:
             plt.tight_layout()
@@ -171,7 +216,7 @@ class HermitianViz:
         ax.set_ylabel('P(up)')
         ax.set_title('MLP Confidence')
         PlotTheme.legend(ax)
-        PlotTheme.format_date_axis(ax)
+        self._format_time_axis(ax)
 
         # set ylim after all draws so zones don't anchor the axis to [0, 1]
         p   = r['mlp_proba']
@@ -224,9 +269,10 @@ class HermitianViz:
         idx        = self.model.data.index
         last_date  = idx[-1]
         view_start = idx[max(0, len(idx) - view_steps)]
-        future_end = PlotTheme.future_trading_dates(last_date, n_ahead)[-1]
+        future_end = self._future_times(last_date, n_ahead)[-1]
+        x_end      = self._xlim_end(future_end)
 
-        ax_r.set_xlim(view_start, future_end + pd.Timedelta(days=5))
-        ax_sig.set_xlim(view_start, last_date + pd.Timedelta(days=5))
+        ax_r.set_xlim(view_start, x_end)
+        ax_sig.set_xlim(view_start, self._xlim_end(last_date))
 
         return fig

@@ -125,9 +125,9 @@ class SECCollector:
 
 if __name__ == '__main__':
 
-    NVDACollector = SECCollector("NVDA", path=str(PROJECT_ROOT / "datasets" / "NVDA" / "SEC"))
+    NVDACollector = SECCollector("SPCX", path=str(PROJECT_ROOT / "datasets" / "SPCX" / "SEC"))
 
-    _ = NVDACollector.fetch(2021, 2026)
+    _ = NVDACollector.fetch(2012, 2026)
     if _ is False:
         raise Exception("Fetch failed")
 
