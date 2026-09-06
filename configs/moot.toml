@@ -1,0 +1,49 @@
+[moot]
+symbols = ["QQQ"]
+time_index = "Date"
+ohlcv_interval = "per_day"
+memory_path = "runtime/broker_memory.json"
+paper_log_path = "runtime/paper_orders.jsonl"
+confidence_threshold = 0.55
+min_trades_for_history = 5
+order_notional = 10000.0
+
+[[brokers]]
+id = "regime_pressure"
+module = "catfish.agents.digital_broker.regime_pressure"
+enabled = true
+weight_seed = 1.0
+symbol = "QQQ"
+data = "datasets/OHLCV/per_day/qqq__.csv"
+model_type = "GaussianEmission"
+training_period = 504
+
+[[brokers]]
+id = "hermite_signal"
+module = "catfish.agents.digital_broker.hermite_signal"
+enabled = true
+weight_seed = 1.0
+symbol = "QQQ"
+data = "datasets/OHLCV/per_day/qqq__.csv"
+tau = 0.52
+window = 504
+
+[[brokers]]
+id = "mass_forecast"
+module = "catfish.agents.digital_broker.mass_forecast"
+enabled = false
+weight_seed = 1.0
+symbol = "QQQ"
+data = "datasets/OHLCV/per_day/qqq__.csv"
+training_period = 504
+forecast_steps = 150
+forecast_dt = 0.015
+forecast_snaps = 50
+
+[[brokers]]
+id = "sec_sentiment"
+module = "catfish.agents.digital_broker.sec_sentiment"
+enabled = false
+weight_seed = 1.0
+symbol = "NVDA"
+years = 2

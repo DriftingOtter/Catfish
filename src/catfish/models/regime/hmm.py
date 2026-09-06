@@ -1,13 +1,14 @@
 import enum
 from typing import final
 
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from hmmlearn.hmm import GaussianHMM, GMMHMM
 from sklearn.preprocessing import RobustScaler, StandardScaler
 
-from catfish.AlphaModels.TimeIndex import TimeIndex
+from catfish.core.time_index import TimeIndex
+from catfish.core.stdout import print_field, print_heading
+from catfish.data.layout import parse_ticker
 
 ALPHA: final = 4
 GAMMA: final = 6
@@ -55,7 +56,8 @@ class MarketPressureModel:
         data = data.set_index(col)
         data = data[~data.index.duplicated(keep="last")]
 
-        self.data = data
+        self.data   = data
+        self.ticker = parse_ticker(path)
 
     def set_training_period(self, period):
         if period is None:
@@ -264,36 +266,28 @@ class MarketPressureModel:
 
         return state_probs, expected_original, std_original
 
+    def get_current_state(self):
+        return int(self.predict_current_state())
 
-if __name__ == '__main__':
+    def get_current_probabilities(self):
+        return self.predict_state_probabilities()
 
-    from catfish.AlphaModels.HMM import VariableWindowHMMViz as vz
-    from catfish.paths import PROJECT_ROOT
+    def print_results(self):
+        if self.model is None:
+            raise RuntimeError("Model not initialized.")
 
-    ShortModel = MarketPressureModel(model_type=ModelType.GaussianEmission, time_index=TimeIndex.Datetime)
-    ShortModel.load_data(str(PROJECT_ROOT / "datasets" / "QQQ" / "QQQ-2026-06-11.csv"))
+        current = self.get_current_state()
+        probs   = self.get_current_probabilities()
+        n_states = self.model.n_components
 
-    ShortModel.set_training_period(period=None)
-    ShortModel.calculate_features()
-    ShortModel.init_model()
-
-    _ = ShortModel.train_model()
-    if _ is False:
-        raise Exception("Convergence failed")
-
-    Viz = vz.Plotter(ShortModel)
-    fig = Viz.plot_all()
-    plt.show()
-
-
-
-    #LongModel = MarketPressureModel(model_type=ModelType.GaussianMixture, time_index=TimeIndex.Date)
-    #LongModel.load_data(str(PROJECT_ROOT / "datasets" / "QQQ" / "QQQ.csv"))
-
-    #LongModel.set_training_period(period=None)
-    #LongModel.calculate_features()
-    #LongModel.init_model()
-
-    #_ = LongModel.train_model()
-    #if _ is False:
-    #    raise Exception("Convergence failed")
+        print_heading("Market Pressure (HMM)")
+        print_field("Ticker", self.ticker or "UNKNOWN")
+        print_field("Model type", self.model_type.name)
+        print_field("States", n_states)
+        print_field("Current state", current)
+        print_field("Confidence", f"{probs[current]:.1%}")
+        print()
+        print("  State probabilities:")
+        for state in range(n_states):
+            marker = " *" if state == current else ""
+            print(f"    S{state}: {probs[state]:.1%}{marker}")

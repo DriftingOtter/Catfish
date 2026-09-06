@@ -8,7 +8,7 @@ import requests
 import yfinance as yf
 from bs4 import BeautifulSoup
 
-from catfish.paths import PROJECT_ROOT
+from catfish.data.layout import sec_dir
 
 DELAY:   final = 1.0
 TIMEOUT: final = 30
@@ -21,7 +21,7 @@ class FilingType(enum.Enum):
     Current   = "8-K"
 
 
-class SECCollector:
+class NewsCollector:
 
     def __init__(self, symbol, path=None):
         if not symbol or not symbol.strip():
@@ -30,7 +30,7 @@ class SECCollector:
         self.filings = []
 
         self.symbol = symbol.upper().strip()
-        self.path   = Path(path) if path is not None else PROJECT_ROOT / "datasets" / self.symbol / "SEC"
+        self.path   = Path(path) if path is not None else sec_dir()
         self.ticker = yf.Ticker(self.symbol)
 
     def fetch(self, start, end):
@@ -83,8 +83,8 @@ class SECCollector:
                 continue
 
             url  = self._url(filing)
-            html = SECCollector._fetch_html(url)
-            text = SECCollector._clean(html)
+            html = NewsCollector._fetch_html(url)
+            text = NewsCollector._clean(html)
             file_path.write_text(text, encoding="utf-8")
 
             saved += 1
@@ -125,9 +125,9 @@ class SECCollector:
 
 if __name__ == '__main__':
 
-    NVDACollector = SECCollector("SPCX", path=str(PROJECT_ROOT / "datasets" / "SPCX" / "SEC"))
+    NVDACollector = NewsCollector("NVDA", path=str(PROJECT_ROOT / "datasets" / "NVDA" / "SEC"))
 
-    _ = NVDACollector.fetch(2012, 2026)
+    _ = NVDACollector.fetch(2021, 2026)
     if _ is False:
         raise Exception("Fetch failed")
 

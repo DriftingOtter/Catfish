@@ -6,7 +6,9 @@ from typing import final
 
 from transformers import pipeline
 
-from catfish.DataRetrieval.SECCollector import SECCollector
+from catfish.core.stdout import print_field, print_heading
+from catfish.data.layout import sec_dir
+from catfish.data.sec import SECCollector
 from catfish.paths import PROJECT_ROOT
 
 MODEL_PATH: final = PROJECT_ROOT / "ExternalModels" / "finbert"
@@ -31,7 +33,7 @@ class MarketSentimentModel:
 
         self._years   = None
         self.symbol   = symbol.upper().strip()
-        self.sec_path = PROJECT_ROOT / "datasets" / self.symbol / "SEC"
+        self.sec_path = sec_dir()
 
         os.environ["HF_HUB_OFFLINE"]           = "1"
         os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
@@ -45,8 +47,8 @@ class MarketSentimentModel:
             truncation=True,
         )
 
-    def load_filings(self, years):
-        if years < 1:
+    def load_filings(self, years=None):
+        if years is not None and years < 1:
             raise Exception("years must be >= 1.")
 
         if not self.sec_path.is_dir():
@@ -54,7 +56,9 @@ class MarketSentimentModel:
 
         self._years = years
         today       = datetime.now().date()
-        cutoff      = today.replace(year=today.year - years)
+        cutoff      = None
+        if years is not None:
+            cutoff = today.replace(year=today.year - years)
 
         filings = []
         for path in sorted(self.sec_path.glob("*.txt")):
@@ -69,7 +73,7 @@ class MarketSentimentModel:
             day   = int(match.group(5))
             date  = datetime(year, month, day).date()
 
-            if date < cutoff:
+            if cutoff is not None and date < cutoff:
                 continue
 
             filings.append({
@@ -82,20 +86,60 @@ class MarketSentimentModel:
             })
 
         if not filings:
-            raise ValueError(
-                f"No SEC filings found for {self.symbol} within the past {years} year(s)."
-            )
+            if cutoff is not None:
+                raise ValueError(
+                    f"No SEC filings found for {self.symbol} within the past {years} year(s)."
+                )
+            raise ValueError(f"No SEC filings found for {self.symbol} in {self.sec_path}.")
 
         filings.sort(key=lambda f: f["date"], reverse=True)
         self.filings = filings
         return True
 
+    def filing_from_path(self, filing_path):
+        path = Path(filing_path).resolve()
+        if not path.is_file():
+            return None
+
+        match = FILING_PATTERN.match(path.name)
+        if match is None or match.group(1) != self.symbol:
+            return None
+
+        year  = int(match.group(3))
+        month = int(match.group(4))
+        day   = int(match.group(5))
+        date  = datetime(year, month, day).date()
+
+        return {
+            "doc_type": match.group(2),
+            "year":     year,
+            "month":    month,
+            "day":      day,
+            "date":     date,
+            "path":     path,
+        }
+
+    def ensure_filing(self, filing_path):
+        resolved = Path(filing_path).resolve()
+        for filing in self.filings:
+            if filing["path"].resolve() == resolved:
+                return filing
+
+        filing = self.filing_from_path(filing_path)
+        if filing is None:
+            return None
+
+        self.filings.append(filing)
+        self.filings.sort(key=lambda f: f["date"], reverse=True)
+        return filing
+
     def analyse_filing(self, filing):
         if isinstance(filing, dict):
-            path = filing["path"]
+            path = Path(filing["path"])
         else:
             path = Path(filing)
 
+        path = path.resolve()
         if not path.is_file():
             raise Exception(f"Filing not found: {path}")
 
@@ -190,17 +234,50 @@ class MarketSentimentModel:
             for i in range(0, len(token_ids), chunk_size)
         ]
 
+    def get_sentiment(self, filing_path=None):
+        if filing_path is None:
+            if self.active is None:
+                raise RuntimeError("No active filing.")
+            path = self.active["path"]
+        else:
+            path = Path(filing_path)
 
-if __name__ == '__main__':
+        key = str(path.resolve())
+        scores = self.sentiments.get(key)
+        if scores is None:
+            raise RuntimeError(f"No sentiment scored for {path.name}.")
+        return {label: pct for label, pct in scores}
 
-    SentimentModel = MarketSentimentModel("SPCX")
-    SentimentModel.load_filings(years=1)
+    def get_dominant_tone(self, filing_path=None):
+        scores = self.get_sentiment(filing_path)
+        pos = scores.get("positive", 0.0)
+        neu = scores.get("neutral", 0.0)
+        neg = scores.get("negative", 0.0)
 
-    sentiment = SentimentModel.analyse_filing(SentimentModel.filings[0])
+        if neg > pos and neg > neu:
+            return "negative", neg
+        if pos > neg and pos > neu:
+            return "positive", pos
+        return "neutral", neu
 
-    from catfish.MarketSentiment import MarketSentimentModelViz as ms_viz
+    def print_results(self):
+        if not self.sentiments:
+            raise RuntimeError("No filings analysed.")
 
-    Viz = ms_viz.Plotter(SentimentModel)
-    fig = Viz.plot_all()
-    import matplotlib.pyplot as plt
-    plt.show()
+        if self.active is None:
+            raise RuntimeError("No active filing.")
+
+        filing = self.active
+        scores = self.get_sentiment()
+        tone, dominant = self.get_dominant_tone()
+
+        print_heading("Market Sentiment")
+        print_field("Symbol", self.symbol)
+        print_field("Filing", f"{filing['doc_type']} ({filing['date']})")
+        print_field("Overall tone", tone)
+        print_field("Dominant score", f"{dominant:.1f}%")
+        print()
+        print("  Label probabilities:")
+        for label in ("positive", "neutral", "negative"):
+            if label in scores:
+                print(f"    {label:8s}: {scores[label]:.1f}%")

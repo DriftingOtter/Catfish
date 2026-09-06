@@ -5,7 +5,9 @@ import pandas as pd
 from sklearn.neural_network import MLPClassifier
 from sklearn.preprocessing import StandardScaler
 
-from catfish.AlphaModels.TimeIndex import TimeIndex
+from catfish.core.time_index import TimeIndex
+from catfish.core.stdout import print_field, print_heading
+from catfish.data.layout import parse_ticker
 
 WINDOW:     final = 2 * 252
 MIN_WINDOW: final = 60
@@ -125,6 +127,7 @@ class HermitianMLPModel:
         data = data[~data.index.duplicated(keep="last")]
 
         self.data = data
+        self.ticker = parse_ticker(path)
 
         return True
 
@@ -209,28 +212,50 @@ class HermitianMLPModel:
 
         return True
 
+    def set_tau(self, tau):
+        if not 0.0 < tau < 1.0:
+            raise ValueError("tau must be between 0 and 1.")
+        self.tau = tau
 
-if __name__ == '__main__':
+    def set_window(self, window):
+        if window < MIN_WINDOW:
+            raise ValueError(f"window must be at least {MIN_WINDOW}.")
+        self.window = window
 
-    import matplotlib.pyplot as plt
+    def get_latest_probability(self):
+        if self.results.empty:
+            raise RuntimeError("Signals not generated.")
+        return float(self.results.iloc[-1]["mlp_proba"])
 
-    from catfish.AlphaModels.HermitianMLP import HermitianMLPViz as vz
-    from catfish.paths import PROJECT_ROOT
+    def get_latest_signal(self):
+        if self.results.empty:
+            raise RuntimeError("Signals not generated.")
+        return int(self.results.iloc[-1]["mlp_signal"])
 
-    Model = HermitianMLPModel(time_index=TimeIndex.Datetime)
-    Model.load_data(str(PROJECT_ROOT / "datasets" / "QQQ" / "QQQ-2026-06-11.csv"))
+    def get_coefficients(self):
+        if self.state_df.empty:
+            raise RuntimeError("Features not calculated.")
+        state = self.state_df.set_index("date")
+        coeffs = {}
+        for feat in ["r", "sigma", "phi", "D", "rsi"]:
+            coeffs[feat] = {
+                "c2":  float(state.iloc[-1][f"c2_{feat}"]),
+                "c3":  float(state.iloc[-1][f"c3_{feat}"]),
+                "cpm": float(state.iloc[-1][f"cpm_{feat}"]),
+            }
+        return coeffs
 
-    #Model = HermitianMLPModel(time_index=TimeIndex.Date)
-    #Model.load_data(str(PROJECT_ROOT / "datasets" / "QQQ" / "QQQ.csv"))
-    Model.calculate_features()
-    Model.init_model()
+    def print_results(self):
+        if self.model is None or self.results.empty:
+            raise RuntimeError("Model not trained.")
 
-    _ = Model.train_model()
-    if _ is False:
-        raise Exception('MLP did not converge within iteration limit.')
+        proba  = self.get_latest_probability()
+        signal = self.get_latest_signal()
+        last   = self.results.iloc[-1]["date"]
 
-    Model.generate_signals()
-
-    Viz = vz.HermitianViz(Model)
-    Viz.plot_all()
-    plt.show()
+        print_heading("Hermitian MLP")
+        print_field("Ticker", self.ticker or "UNKNOWN")
+        print_field("As of", last)
+        print_field("P(up)", f"{proba:.1%}")
+        print_field("Threshold (tau)", f"{self.tau:.2f}")
+        print_field("Signal", "bullish" if signal else "bearish")

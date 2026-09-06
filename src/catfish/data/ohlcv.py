@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import yfinance as yf
 
-from catfish.paths import PROJECT_ROOT
+from catfish.data.layout import ohlcv_path
 
 ET: final = ZoneInfo("America/New_York")
 FMT: final = "%Y-%m-%d %H:%M:%S"
@@ -55,7 +55,9 @@ class CandleStickCollector:
 
         self.region   = region
         self.interval = interval
-        self.paths    = CandleStickCollector._resolve_paths(self.symbols, path)
+        self.paths    = CandleStickCollector._resolve_paths(
+            self.symbols, path, interval=self.interval,
+        )
 
         self.data            = {s: pd.DataFrame() for s in self.symbols}
         self.historical_data = {s: pd.DataFrame() for s in self.symbols}
@@ -480,16 +482,25 @@ class CandleStickCollector:
         return bar_ts.strftime("%H:%M")
 
     @staticmethod
-    def _resolve_paths(symbols, path, daily=False):
+    def _interval_folder(interval):
+        if interval == BarInterval.OneSecond:
+            return "per_second"
+        if interval in (BarInterval.OneMinute, BarInterval.FiveMinute, BarInterval.TenMinute):
+            return "per_minute"
+        raise ValueError(f"interval {interval.name} has no datasets folder mapping.")
+
+    @staticmethod
+    def _resolve_paths(symbols, path, daily=False, interval=BarInterval.OneMinute):
         if path is None:
             today = datetime.now(tz=ET).strftime(DATE_FMT)
             if daily:
                 return {
-                    s: PROJECT_ROOT / "datasets" / s / f"{s}.csv"
+                    s: ohlcv_path(s, interval="per_day")
                     for s in symbols
                 }
+            folder = CandleStickCollector._interval_folder(interval)
             return {
-                s: PROJECT_ROOT / "datasets" / s / f"{s}-{today}.csv"
+                s: ohlcv_path(s, interval=folder, session_date=today)
                 for s in symbols
             }
 
@@ -567,18 +578,10 @@ if __name__ == '__main__':
     # INTERVAL = BarInterval.FiveMinute
     # INTERVAL = BarInterval.TenMinute
 
-    today = datetime.now(tz=ET).strftime(DATE_FMT)
-
     SessionCollector = CandleStickCollector(
         ["QQQ", "MNQ", "SPY", "SPCX"],
         region=Region.NewYork,
         interval=INTERVAL,
-        path={
-            "QQQ": str(PROJECT_ROOT / "datasets" / "QQQ" / f"QQQ-{today}.csv"),
-            "MNQ": str(PROJECT_ROOT / "datasets" / "MNQ" / f"MNQ-{today}.csv"),
-            "SPY": str(PROJECT_ROOT / "datasets" / "SPY" / f"SPY-{today}.csv"),
-            "SPCX": str(PROJECT_ROOT / "datasets" / "SPCX" / f"SPCX-{today}.csv"),
-        },
     )
 
     # _ = SessionCollector.fetch_historical()
