@@ -13,21 +13,21 @@ __all__ = [
 
 def __getattr__(name):
     if name == "BarCollector":
-        from catfish.DataRetrieval.CandleStickCollector import CandleStickCollector
+        from catfish.data.ohlcv import CandleStickCollector
         return CandleStickCollector
     if name == "MarketPressureModel":
-        from catfish.AlphaModels.HMM.VariableWindowHMM import MarketPressureModel
+        from catfish.models.regime.hmm import MarketPressureModel
         return MarketPressureModel
     if name == "ModelType":
-        from catfish.AlphaModels.HMM.VariableWindowHMM import ModelType
+        from catfish.models.regime.hmm import ModelType
         return ModelType
     if name == "TimeIndex":
-        from catfish.AlphaModels.TimeIndex import TimeIndex
+        from catfish.core.time_index import TimeIndex
         return TimeIndex
     if name == "HermitianMLPModel":
-        from catfish.AlphaModels.HermitianMLP.HermitianMLP import HermitianMLPModel
+        from catfish.models.signal.hermitian_mlp import HermitianMLPModel
         return HermitianMLPModel
     if name == "MarketSentimentModel":
-        from catfish.MarketSentiment.MarketSentimentModel import MarketSentimentModel
+        from catfish.models.sentiment.sec_finbert import MarketSentimentModel
         return MarketSentimentModel
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

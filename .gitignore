@@ -1,5 +1,7 @@
 # Data storage (Never commit raw data)
-data/
+node_modules/
+/data/
+/runtime/
 
 # Keep datasets directory structure, ignore contents
 datasets/**
@@ -19,7 +21,7 @@ ExternalModels/
 *.hdf5
 
 # Model weights, checkpoints, and artifacts
-models/
+/models/
 checkpoints/
 weights/
 *.pkl
@@ -32,6 +34,7 @@ weights/
 *.tflite
 *.ckpt
 *.python-version
+*.pdf
 
 # Experiment tracking & logs
 lightning_logs/

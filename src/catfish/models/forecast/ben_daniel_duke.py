@@ -1,4 +1,3 @@
-from pathlib import Path
 from typing import final
 
 import numpy as np
@@ -8,7 +7,9 @@ from scipy.sparse import diags, eye as sp_eye
 from scipy.sparse.linalg import spsolve
 from scipy.stats import linregress
 
-from catfish.AlphaModels.TimeIndex import TimeIndex
+from catfish.core.time_index import TimeIndex
+from catfish.core.stdout import print_field, print_heading
+from catfish.data.layout import parse_ticker
 
 N:         final = 400
 X_SPAN:    final = 3.5
@@ -47,6 +48,10 @@ class BenDanielDukeModel:
         self.N          = N
         self.x_span     = x_span
 
+        self._forecast_steps = 150
+        self._forecast_dt    = 0.015
+        self._forecast_snaps = 50
+
     def load_data(self, path):
         if not path.endswith('.csv'):
             raise Exception('Invalid file format. Must be .csv')
@@ -70,7 +75,7 @@ class BenDanielDukeModel:
             raise ValueError("No rows loaded from file.")
 
         self.data   = data
-        self.ticker = Path(path).stem
+        self.ticker = parse_ticker(path)
 
         return True
 
@@ -217,9 +222,13 @@ class BenDanielDukeModel:
         J     = (self.h_eff / self.mass) * np.imag(np.conj(self.psi) * dpsi)
         return xE, sigma, pE, rho, J
 
-    def forecast(self, steps=150, dt=0.015, n_snaps=50):
+    def forecast(self, steps=None, dt=None, n_snaps=None):
         if self.psi is None:
             raise RuntimeError("Wavefunction not initialized.")
+
+        steps   = self._forecast_steps if steps is None else steps
+        dt      = self._forecast_dt if dt is None else dt
+        n_snaps = self._forecast_snaps if n_snaps is None else n_snaps
 
         H_int = self._hamiltonian()
         xs, ss, ps = [], [], []
@@ -247,23 +256,56 @@ class BenDanielDukeModel:
 
         return True
 
+    def set_forecast_params(self, steps=150, dt=0.015, n_snaps=50):
+        if steps < 1:
+            raise ValueError("steps must be >= 1.")
+        if dt <= 0.0:
+            raise ValueError("dt must be positive.")
+        if n_snaps < 1:
+            raise ValueError("n_snaps must be >= 1.")
+        self._forecast_steps = steps
+        self._forecast_dt    = dt
+        self._forecast_snaps = n_snaps
 
-if __name__ == '__main__':
+    def get_regime(self):
+        if self.gex_eff is None:
+            raise RuntimeError("Features not calculated.")
+        return "mean-reverting" if self.gex_eff >= 0 else "trending"
 
-    import matplotlib.pyplot as plt
+    def get_parameters(self):
+        if self.gex_eff is None:
+            raise RuntimeError("Features not calculated.")
+        return {
+            "gex_eff": self.gex_eff,
+            "alpha":   self.alpha,
+            "h_eff":   self.h_eff,
+        }
 
-    from catfish.AlphaModels.VariableMarketMassPredictor import BenDanielDukeModelViz as vz
-    from catfish.paths import PROJECT_ROOT
+    def get_forecast(self):
+        if self.forecast_result is None:
+            raise RuntimeError("Forecast not computed.")
+        fc = self.forecast_result
+        return {
+            "xE":    fc["xE"],
+            "sigma": fc["sigma"],
+            "pE":    fc["pE"],
+        }
 
-    TICKER = "QQQ"
-    NVDAModel = BenDanielDukeModel(time_index=TimeIndex.Datetime)
-    NVDAModel.load_data(str(PROJECT_ROOT / "datasets" / f"{TICKER}" / f"{TICKER}-2026-06-11.csv"))
-    NVDAModel.set_training_period(2*252)
-    NVDAModel.calculate_features()
+    def print_results(self):
+        if self.forecast_result is None:
+            raise RuntimeError("Forecast not computed.")
 
-    NVDAModel.init_psi(x0=float(NVDAModel.x_hist[-1]))
-    NVDAModel.forecast(steps=150, dt=0.015, n_snaps=50)
+        fc     = self.forecast_result
+        params = self.get_parameters()
+        xE     = fc["xE"]
+        sig    = fc["sigma"]
 
-    Viz = vz.Plotter(NVDAModel)
-    fig = Viz.plot_all()
-    plt.show()
+        print_heading("BenDaniel–Duke")
+        print_field("Ticker", self.ticker or "UNKNOWN")
+        print_field("Regime", self.get_regime())
+        print_field("GEX_eff", f"{params['gex_eff']:+.3f}")
+        print_field("alpha", f"{params['alpha']:.3f}")
+        print_field("h_eff", f"{params['h_eff']:.3f}")
+        print_field("Forecast horizon", f"{len(xE)} steps")
+        print_field("Terminal xE", f"{xE[-1]:+.4f}")
+        print_field("Terminal sigma", f"{sig[-1]:.4f}")
