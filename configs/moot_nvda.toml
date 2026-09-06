@@ -1,0 +1,38 @@
+[moot]
+id = "nvda_alt"
+symbols = ["NVDA"]
+time_index = "Date"
+ohlcv_interval = "per_day"
+memory_path = "runtime/moot_nvda_alt/broker_memory.json"
+paper_log_path = "runtime/moot_nvda_alt/paper_orders.jsonl"
+confidence_threshold = 0.55
+min_trades_for_history = 5
+order_notional = 10000.0
+
+[[brokers]]
+id = "regime_pressure"
+module = "catfish.agents.digital_broker.regime_pressure"
+enabled = true
+weight_seed = 1.0
+symbol = "NVDA"
+data = "datasets/OHLCV/per_day/nvda__.csv"
+model_type = "GaussianEmission"
+training_period = 504
+
+[[brokers]]
+id = "hermite_signal"
+module = "catfish.agents.digital_broker.hermite_signal"
+enabled = true
+weight_seed = 1.0
+symbol = "NVDA"
+data = "datasets/OHLCV/per_day/nvda__.csv"
+tau = 0.52
+window = 504
+
+[[brokers]]
+id = "sec_sentiment"
+module = "catfish.agents.digital_broker.sec_sentiment"
+enabled = true
+weight_seed = 1.0
+symbol = "NVDA"
+years = 2

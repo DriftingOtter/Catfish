@@ -1,4 +1,5 @@
 import importlib
+import json
 import tomllib
 from pathlib import Path
 from typing import final
@@ -18,6 +19,7 @@ class MootRunner:
 
         self.config    = {}
         self.moot      = {}
+        self.moot_id   = None
         self.proposals = []
         self.decisions = []
 
@@ -30,7 +32,8 @@ class MootRunner:
         with open(self.config_path, "rb") as f:
             self.config = tomllib.load(f)
 
-        self.moot = self.config.get("moot", {})
+        self.moot    = self.config.get("moot", {})
+        self.moot_id = self.moot.get("id", self.config_path.stem)
 
     def run_brokers(self, on_proposal=None):
         self.proposals = []
@@ -44,6 +47,7 @@ class MootRunner:
             if not hasattr(mod, "Broker"):
                 raise Exception(f"Module {module_name} has no Broker class")
 
+            # each broker builds and trains its own model instance — never shared
             broker   = mod.Broker.from_config(cfg, self.moot)
             proposal = broker.run()
             self.proposals.append(proposal)
@@ -73,17 +77,78 @@ class MootRunner:
             trades.append(trade)
         return trades
 
+    def payload(self):
+        return self._jsonable({
+            "moot_id":   self.moot_id,
+            "config":    str(self.config_path),
+            "symbols":   self.moot.get("symbols", []),
+            "proposals": self.proposals,
+            "decisions": self.decisions,
+            "trades":    self.human_trades(),
+        })
+
+    @staticmethod
+    def resolve_config(config_path):
+        path = Path(config_path)
+        if not path.is_absolute():
+            path = PROJECT_ROOT / path
+        return path
+
+    @staticmethod
+    def _jsonable(obj):
+        if isinstance(obj, dict):
+            return {str(k): MootRunner._jsonable(v) for k, v in obj.items()}
+        if isinstance(obj, (list, tuple)):
+            return [MootRunner._jsonable(v) for v in obj]
+        if isinstance(obj, Path):
+            return str(obj)
+        if isinstance(obj, (str, bool)) or obj is None:
+            return obj
+        if isinstance(obj, int) and not isinstance(obj, bool):
+            return int(obj)
+        if isinstance(obj, float):
+            return float(obj)
+        if hasattr(obj, "item"):
+            return MootRunner._jsonable(obj.item())
+        return str(obj)
+
+
+class MootCLI:
+
+    def __init__(self, config_path=DEFAULT_CONFIG, mode="tui"):
+        self.config_path = config_path
+        self.mode        = mode
+
+    def run(self):
+        if self.mode == "tui":
+            from catfish.agents.dashboard import MootDashboard
+            MootDashboard(config_path=self.config_path).run()
+            return True
+
+        if self.mode == "headless":
+            runner = MootRunner(self.config_path)
+            runner.run()
+            print(json.dumps(runner.payload(), indent=2))
+            return True
+
+        if self.mode == "api":
+            from catfish.agents.api import MootAPI
+            MootAPI.from_config(self.config_path).serve()
+            return True
+
+        raise Exception(f"Unknown mode: {self.mode}")
+
 
 if __name__ == "__main__":
     import argparse
 
-    from catfish.agents.dashboard import MootDashboard
-
     parser = argparse.ArgumentParser(description="Run a Catfish multi-broker moot")
+    parser.add_argument("--config", default=DEFAULT_CONFIG)
     parser.add_argument(
-        "--config",
-        default=DEFAULT_CONFIG,
-        help="Path to moot TOML (default: configs/moot.toml)",
+        "--mode",
+        choices=["tui", "headless", "api"],
+        default="tui",
+        help="tui (default), headless JSON stdout, or api HTTP server",
     )
     args = parser.parse_args()
-    MootDashboard(config_path=args.config).run()
+    MootCLI(config_path=args.config, mode=args.mode).run()

@@ -1,12 +1,17 @@
 [moot]
+id = "qqq_core"
 symbols = ["QQQ"]
 time_index = "Date"
 ohlcv_interval = "per_day"
-memory_path = "runtime/broker_memory.json"
-paper_log_path = "runtime/paper_orders.jsonl"
+memory_path = "runtime/moot_qqq_core/broker_memory.json"
+paper_log_path = "runtime/moot_qqq_core/paper_orders.jsonl"
 confidence_threshold = 0.55
 min_trades_for_history = 5
 order_notional = 10000.0
+
+[api]
+host = "127.0.0.1"
+port = 8080
 
 [[brokers]]
 id = "regime_pressure"
@@ -31,7 +36,7 @@ window = 504
 [[brokers]]
 id = "mass_forecast"
 module = "catfish.agents.digital_broker.mass_forecast"
-enabled = false
+enabled = true
 weight_seed = 1.0
 symbol = "QQQ"
 data = "datasets/OHLCV/per_day/qqq__.csv"
@@ -39,11 +44,3 @@ training_period = 504
 forecast_steps = 150
 forecast_dt = 0.015
 forecast_snaps = 50
-
-[[brokers]]
-id = "sec_sentiment"
-module = "catfish.agents.digital_broker.sec_sentiment"
-enabled = false
-weight_seed = 1.0
-symbol = "NVDA"
-years = 2

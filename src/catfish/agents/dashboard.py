@@ -106,13 +106,12 @@ class MootDashboard(App):
         self.query_one("#trades", DataTable).clear()
         self.run_worker(self._run_moot, exclusive=True, thread=True)
 
+    def _on_proposal_thread(self, proposal):
+        self.call_from_thread(self._append_proposal, proposal)
+
     def _run_moot(self):
         runner = MootRunner(self.config_path)
-
-        def on_proposal(proposal):
-            self.call_from_thread(self._append_proposal, proposal)
-
-        proposals, decisions = runner.run(on_proposal=on_proposal)
+        proposals, decisions = runner.run(on_proposal=self._on_proposal_thread)
         self.call_from_thread(self._finish, runner, proposals, decisions)
 
     def _append_proposal(self, proposal):
@@ -151,14 +150,15 @@ class MootDashboard(App):
             )
 
         status = self.query_one("#status", Static)
+        moot   = runner.moot_id or "?"
         if human:
             status.update(
-                f"Moot complete · {len(proposals)} proposal(s) · "
+                f"{moot} complete · {len(proposals)} proposal(s) · "
                 f"{len(human)} trade(s) for manual execution · q quit · r rerun"
             )
         else:
             status.update(
-                f"Moot complete · {len(proposals)} proposal(s) · "
+                f"{moot} complete · {len(proposals)} proposal(s) · "
                 f"no trades cleared threshold · q quit · r rerun"
             )
 
